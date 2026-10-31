@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.lab.emp</groupId>
+    <artifactId>ssm-emp-mis</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+    <name>ssm-emp-mis</name>
+    <description>实验二：AI 赋能 SSM 框架整合与 EMP 员工管理 MIS 系统</description>
+
+    <!--
+        版本策略：全部锁定，不用 LATEST / RELEASE，也不用 parent 继承。
+        原因：本工程是「全注解手工整合 SSM」的教学项目，依赖树必须一眼可见、可逐项核对，
+        评分表要求「统一依赖管理 + 版本兼容矩阵可说明」，parent 会把版本藏起来。
+    -->
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- JDK 17：用 release 而不是 source/target，强制按 17 的 API 表面编译 -->
+        <maven.compiler.release>17</maven.compiler.release>
+
+        <!-- 框架版本：Spring 5.3.x 是最后一个坚持 javax.* 命名空间的主线，与教材一致 -->
+        <spring.version>5.3.31</spring.version>
+        <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
+        <druid.version>1.2.20</druid.version>
+        <mysql.version>8.0.33</mysql.version>
+        <jackson.version>2.15.3</jackson.version>
+        <hibernate-validator.version>6.2.5.Final</hibernate-validator.version>
+        <aspectj.version>1.9.21</aspectj.version>
+        <servlet-api.version>4.0.1</servlet-api.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <reload4j.version>1.2.19</reload4j.version>
+        <lombok.version>1.18.30</lombok.version>
+        <junit.version>4.13.2</junit.version>
+    </properties>
+
+    <dependencies>
+        <!-- ==================== 1. Spring / SpringMVC ==================== -->
+        <!-- webmvc 传递引入 spring-web / spring-core / spring-beans / spring-context / spring-aop / spring-expression -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webmvc</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <!-- jdbc 传递引入 spring-tx（@Transactional 的运行时支撑） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <!-- @Aspect / @Around / @Pointcut 的注解与切点解析 -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-aspects</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <!-- 显式提升 AspectJ 织入器版本：1.9.21 已适配 JDK 17 的字节码版本 -->
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>${aspectj.version}</version>
+        </dependency>
+        <!-- Service 层单元测试用（@ContextConfiguration / @RunWith(SpringJUnit4ClassRunner)） -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <version>${spring.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- ==================== 2. 持久层 ==================== -->
+        <!--
+            MP 聚合包：传递引入 mybatis-plus-extension（含 MybatisSqlSessionFactoryBean）
+            与 mybatis-spring（SqlSessionFactoryBean / MapperScannerConfigurer 所在包）。
+            注意：本工程必须用 MybatisSqlSessionFactoryBean 而不是原生 SqlSessionFactoryBean，
+            否则 BaseMapper 的通用 CRUD 会整体失效——与实验一「必须用 MybatisXMLConfigBuilder」
+            是同一类坑，详见 README 第十节。
+        -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <!-- Druid 连接池：setInitialSize / setMaxActive 与监控能力 -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>druid</artifactId>
+            <version>${druid.version}</version>
+        </dependency>
+        <!-- MySQL 驱动：8.x 的坐标是 com.mysql:mysql-connector-j（旧坐标为 mysql:mysql-connector-java） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>${mysql.version}</version>
+            <exclusions>
+                <!-- protobuf 只服务 X DevAPI（NoSQL 接口），JDBC 用不到，排除后少 1.7 MB -->
+                <exclusion>
+                    <groupId>com.google.protobuf</groupId>
+                    <artifactId>protobuf-java</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- ==================== 3. Web 容器（由 Tomcat 9 提供，不打进 war） ==================== -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>${servlet-api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- @PostConstruct / @PreDestroy：JDK 11 起已从 JDK 移除，必须单独引入 -->
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>1.3.2</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- ==================== 4. JSON 与参数校验 ==================== -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <!-- JSR-303 实现：6.x 仍使用 javax.validation 命名空间，与 Spring 5 匹配 -->
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>${hibernate-validator.version}</version>
+        </dependency>
+        <!--
+            Hibernate Validator 的 EL 实现。
+            Tomcat 9 的 lib/ 已自带 EL 3.0，故标 provided；
+            若改用嵌入式 Tomcat 或 main() 直接起容器，需去掉 scope 改为 compile，
+            否则报 HV000183: Unable to initialize 'javax.el.ExpressionFactory'。
+        -->
+        <dependency>
+            <groupId>org.glassfish</groupId>
+            <artifactId>jakarta.el</artifactId>
+            <version>3.0.4</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- ==================== 5. 日志 ==================== -->
+        <!--
+            日志链路：SLF4J 门面 → slf4j-reload4j 绑定 → reload4j（log4j 1.2 的维护分支，包名不变）。
+            不用「log4j 1.2.17 + slf4j-log4j12」：slf4j-log4j12:1.7.36 的 pom 已 relocation 到
+            slf4j-reload4j，会额外拉进 reload4j，classpath 里出现两份同名的 org.apache.log4j.* 类。
+        -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-reload4j</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.reload4j</groupId>
+            <artifactId>reload4j</artifactId>
+            <version>${reload4j.version}</version>
+        </dependency>
+
+        <!-- ==================== 6. 辅助与测试 ==================== -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!--
+            war 名 = 仓库名，保持「仓库名 / 构件名 / 产物名」三者一致。
+            部署时在 Tomcat 里把 Application context 设为 "/"，
+            接口路径才与指导书的 POST /emps 完全一致；若保留默认，
+            基址会变成 http://localhost:8080/ssm-emp-mis。
+        -->
+        <finalName>ssm-emp-mis</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                    <encoding>UTF-8</encoding>
+                    <!-- Lombok 走注解处理器路径，避免与 JDK 17 的强封装产生冲突 -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- 全注解整合没有 web.xml，必须关掉「缺 web.xml 报错」，否则 package 阶段失败 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>3.4.0</version>
+                <configuration>
+                    <failOnMissingWebXml>false</failOnMissingWebXml>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <argLine>
+                        -Dfile.encoding=UTF-8
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                        --add-opens java.base/java.util=ALL-UNNAMED
+                    </argLine>
+                    <trimStackTrace>false</trimStackTrace>
+                </configuration>
+            </plugin>
+        </plugins>
+
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>**/*.properties</include>
+                    <include>**/*.xml</include>
+                </includes>
+                <filtering>false</filtering>
+            </resource>
+            <!-- Mapper XML 与接口同包放置时，需要额外把 java 目录下的 xml 打进 classes -->
+            <resource>
+                <directory>src/main/java</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                </includes>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+    </build>
+
+    <profiles>
+        <!--
+            mvn -Pjdk8-lint clean compile
+            仅用于复核「代码里是否误用了 JDK 9 及以上版本才有的 API」：
+            以 release 8 编译一遍，报错即说明存在只能在 17 上跑的写法。
+            平时不要激活。
+        -->
+        <profile>
+            <id>jdk8-lint</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.13.0</version>
+                        <configuration>
+                            <release>8</release>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>
