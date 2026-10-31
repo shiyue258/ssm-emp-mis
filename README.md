@@ -14,10 +14,9 @@
 | 数据库 | MySQL 8.0，库 `ssm_emp`，主表 `emp` |
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
-| 状态 | 🚧 **骨架阶段**：`pom.xml` 与本文档已完成，业务代码尚未开始 |
+| 状态 | 🚧 **骨架阶段**：工程结构、数据库脚本与依赖蓝图已完成，业务代码尚未开始 |
 
-> 进度口径说明：本文档中标注「已实现」的内容均指**当前仓库里真实存在且跑通过**的东西；
-> 其余一律标「待实现」。不做「文档先行、代码后补」的虚假陈述。
+> 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
 ---
 
@@ -138,30 +137,32 @@ ssm-emp-mis/
 ├── pom.xml                                      ✅ 依赖与构建，版本全部锁定
 ├── README.md                                    ✅
 ├── .gitignore                                   ✅
-├── sql/init.sql                                 ⬜ 建库建表 + 约束索引 + 种子数据
+├── sql/init.sql                                 ✅ 建库建表 + 约束索引 + 12 条种子数据
 └── src/
     ├── main/java/com/lab/emp/
-    │   ├── config/
+    │   ├── config/                              ✅ 已建包，待放 3 个配置类
     │   │   ├── ServletContainersInitConfig      ⬜ 取代 web.xml，注册 DispatcherServlet + 编码过滤器
     │   │   ├── SpringConfig                     ⬜ 根容器：Druid、MyBatis-Plus、Mapper 扫描、事务
     │   │   └── SpringMvcConfig                  ⬜ 子容器：@EnableWebMvc、跨域、拦截器、静态资源
-    │   ├── controller/EmpController             ⬜ RESTful 六接口
-    │   ├── service/EmpService + impl/EmpServiceImpl  ⬜ 分页多条件 + 事务方法
-    │   ├── mapper/EmpMapper                     ⬜ BaseMapper
-    │   ├── entity/Emp                           ⬜ JSR-303 注解 + MP 注解
-    │   ├── dto/EmpQueryDTO                      ⬜ 查询条件对象
-    │   ├── common/
-    │   │   ├── Result                           ⬜ 统一返回
-    │   │   ├── BusinessException                ⬜ 业务异常
-    │   │   └── GlobalExceptionHandler           ⬜ @RestControllerAdvice
-    │   ├── aspect/WebLogAspect                  ⬜ AOP 请求日志
-    │   └── interceptor/LoginInterceptor         ⬜ 未登录返回 401
+    │   ├── controller/                          ✅ 已建包，待放 EmpController（RESTful 六接口）
+    │   ├── service/                             ✅ 已建包，待放 EmpService 接口
+    │   │   └── impl/                            ✅ 已建包，待放 EmpServiceImpl（分页多条件 + 事务）
+    │   ├── mapper/                              ✅ 已建包，待放 EmpMapper（BaseMapper）
+    │   ├── entity/                              ✅ 已建包，待放 Emp（JSR-303 + MP 注解）
+    │   ├── dto/                                 ✅ 已建包，待放 EmpQueryDTO
+    │   ├── common/                              ✅ 已建包，待放 Result / BusinessException / GlobalExceptionHandler
+    │   ├── aspect/                              ✅ 已建包，待放 WebLogAspect
+    │   └── interceptor/                         ✅ 已建包，待放 LoginInterceptor
     ├── main/resources/
-    │   ├── jdbc.properties                      ⬜ 连接串（密码可被环境变量覆盖）
-    │   ├── log4j.properties                     ⬜ Console，Mapper 包 DEBUG
+    │   ├── jdbc.properties                      ✅ 连接串 / 连接池参数
+    │   ├── log4j.properties                     ✅ Console 输出，Mapper 包 DEBUG
     │   └── mapper/EmpMapper.xml                 ⬜ 若采用 XML 映射则放此处
     └── test/java/com/lab/emp/                   ⬜ 事务失效三场景集成测试
 ```
+
+每个包目录里放了一个 `package-info.java`，用 Javadoc 声明该包的职责与依赖方向。这样做的目的是：
+Java 的包本身不能被 Git 跟踪（空目录不入库），而 `package-info.java` 是 JDK 认可的正式语法，
+既能占住目录，又能让 IDE 的包视图中直接看到每层的边界约定。
 
 ### 4.1 为什么是「单个 Maven 模块 + 内部分层」，不是多模块
 
@@ -179,12 +180,55 @@ ssm-emp-mis/
 
 依赖方向严格单向：
 
-
 ```text
 entity ← mapper ← service ← controller
                 ↑
         config（数据源 / 事务 / 拦截器）
 ```
+
+### 4.2 数据库设计：`ssm_emp.emp`
+
+```sql
+CREATE TABLE emp (
+    emp_id      INT UNSIGNED    NOT NULL AUTO_INCREMENT  COMMENT '员工ID',
+    emp_name    VARCHAR(50)     NOT NULL                 COMMENT '员工姓名',
+    gender      CHAR(1)         NOT NULL DEFAULT '男'     COMMENT '性别：男/女',
+    dept        VARCHAR(50)     NOT NULL                 COMMENT '所属部门',
+    post        VARCHAR(50)         NULL                 COMMENT '职位',
+    salary      DECIMAL(10, 2)  NOT NULL DEFAULT 0.00    COMMENT '月薪（元）',
+    hire_date   DATE            NOT NULL                 COMMENT '入职日期',
+    status      TINYINT         NOT NULL DEFAULT 1       COMMENT '状态：1 在职 / 0 离职',
+    create_time DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted     TINYINT         NOT NULL DEFAULT 0       COMMENT '逻辑删除：0 正常 / 1 已删除',
+    PRIMARY KEY (emp_id),
+    KEY idx_emp_name (emp_name),
+    KEY idx_emp_dept_status (dept, status),
+    CONSTRAINT chk_emp_gender CHECK (gender IN ('男', '女')),
+    CONSTRAINT chk_emp_salary CHECK (salary >= 0),
+    CONSTRAINT chk_emp_status CHECK (status IN (0, 1)),
+    CONSTRAINT chk_emp_deleted CHECK (deleted IN (0, 1))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+```
+
+三个设计决定值得说明：
+
+1. **`status` 与 `deleted` 是两个维度。** `status` 是业务状态（在职 / 离职），员工本人可见，影响业务查询；`deleted` 是逻辑删除标记，只影响本系统看到的数据，用于保留历史。合并成一个字段会导致「离职」和「被删除」无法区分。
+2. **金额用 `DECIMAL(10,2)`，不用 `FLOAT`/`DOUBLE`。** 浮点在 0.1 + 0.2 这类运算上会产生 `0.30000000000000004`，薪资字段一旦出现这种误差，对账就永远对不平。Java 侧对应 `BigDecimal`。
+3. **约束下沉到数据库。** 应用层的校验可以被绕过（直接连库、脚本导入、AI 生成的代码漏掉校验），CHECK 约束是最后一道闸门。实测三条都会被拒：
+   - 负薪资 → `ERROR 3819 ... chk_emp_salary is violated`
+   - `status = 9` → `ERROR 3819 ... chk_emp_status is violated`
+   - `gender = 'X'` → `ERROR 3819 ... chk_emp_gender is violated`
+
+索引验证（`EXPLAIN`，`like '张%'`）：
+
+```text
+type=range  key=idx_emp_name  key_len=202  rows=2  Extra=Using index condition
+```
+
+前导模糊走索引，`like '%张%'` 不走——这是 B+ 树的结构决定的，不是配置问题。分页多条件查询里如果要对姓名做前后模糊，需要接受全表扫描的代价，或者改用前缀匹配。
+
+**种子数据 12 条**，覆盖 5 个部门、2 名离职员工；「张 / 王 / 刘 / 陈」各 2 人，用来验证姓名模糊查询不会只命中一条；12 条配 `size=5` 正好演示 3 页。
 
 ---
 
@@ -199,15 +243,21 @@ entity ← mapper ← service ← controller
 | MySQL | 8.0，端口 3306 | `mysql -uroot -p -e "select version()"` |
 | Tomcat | 9.0.x | IDEA → Run Configuration → Tomcat Server |
 
-### 5.2 构建
+### 5.2 初始化数据库与构建
 
 ```bash
-# 只解析依赖（最快的一道健康检查）
+# 1) 建库建表 + 约束索引 + 种子数据
+#    必须显式指定 utf8mb4，否则中文会按 latin1 二次编码成乱码
+docker exec -i dev-mysql mysql --default-character-set=utf8mb4 -uroot -p123456 < sql/init.sql
+
+# 2) 只解析依赖（最快的一道健康检查）
 mvn -B dependency:resolve
 
-# 打包成 war，产物 target/ssm-emp-mis.war
+# 3) 打包成 war，产物 target/ssm-emp-mis.war
 mvn -B clean package
 ```
+
+`init.sql` 可重复执行：先按依赖顺序 `DROP TABLE` 再重建，重复导入不会报错，行数恒为 12。
 
 ### 5.3 部署到 Tomcat 9 与接口基址
 
@@ -227,7 +277,12 @@ mvn -B clean package
 | 检查项 | 结果 |
 | :--- | :--- |
 | `mvn -B dependency:resolve`（JDK 17.0.21 / Maven 3.9.12） | ✅ BUILD SUCCESS，38 个构件全部解析 |
-| `mvn -B clean package`（空工程） | ✅ BUILD SUCCESS，产出 `target/ssm-emp-mis.war`（21.4 MB） |
+| `mvn -B clean package` | ✅ BUILD SUCCESS，产出 `target/ssm-emp-mis.war`（21.4 MB） |
+| `sql/init.sql` 首次导入 | ✅ 12 行数据落库，中文无乱码 |
+| `sql/init.sql` 重复导入 | ✅ 幂等，行数仍为 12（先 DROP 再 CREATE） |
+| CHECK 约束（负薪资 / 非法 status / 非法 gender） | ✅ 三条均被拒，`ERROR 3819` |
+| `EXPLAIN ... like '张%'` | ✅ `key=idx_emp_name`，`type=range` |
+| `package-info.java` 编译 | ✅ 10 个 `.class` 生成 |
 | `mvn -B test` | ⬜ 尚无测试用例 |
 | Tomcat 9 部署启动 | ⬜ 尚无 `ServletContainersInitConfig`，启动会 404 |
 
@@ -263,10 +318,10 @@ mvn -B clean package
 
 ## 七、路线图（任务 2–7）
 
-- [x] **任务 2（部分）** 工程初始化：`pom.xml` 版本锁定、`.gitignore`、JDK 17 构建链验证
-- [ ] **任务 2（剩余）** 目录骨架、`git` 首次提交、依赖清单人工核对记录
+- [x] **任务 2** 工程初始化：`pom.xml` 版本锁定、`.gitignore`、目录骨架、JDK 17 构建链验证、首次提交
 - [ ] **任务 3** 全注解整合三件套 + 整合验证（临时 Controller / 临时 Service 试跑后删除）
-- [ ] **任务 4** `sql/init.sql`（`emp` 表 + 索引 + 约束）、分层代码生成与逐层校验、`Result` 封装
+- [x] **任务 4（部分）** `sql/init.sql`：`emp` 表 + 索引 + CHECK 约束 + 12 条种子数据，已导入验证
+- [ ] **任务 4（剩余）** 分层代码生成与逐层校验、`Result` 封装
 - [ ] **任务 5** 分页多条件查询 + RESTful 六接口 + ApiFox 调试
 - [ ] **任务 6** JSR-303 / 全局异常 / 登录拦截 / AOP 日志 / 声明式事务 + **事务失效三场景实验**
 - [ ] **任务 7** ApiFox 全量用例集、AI 辅助调优记录、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
@@ -324,6 +379,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | :--- | :--- |
 | 2026-10-31 | 初始化仓库：`pom.xml`（JDK 17 + Spring 5.3.31 + MP 3.5.3.1，版本全部锁定）、`.gitignore`、本 README；在 JDK 17.0.21 上完成 `dependency:resolve` 与空 war 打包验证 |
 | 2026-10-31 | 项目定名 `ssm-emp-mis`（技术栈 + 领域 + 系统类型三段式），仓库名 / 构件名 / 产物名三者统一；确认采用「单 Maven 模块 + 内部分层包」结构 |
+| 2026-10-31 | 建立 `src` 十层包骨架（每包一份 `package-info.java` 声明职责）、`jdbc.properties`、`log4j.properties`；`sql/init.sql` 完成 `emp` 表、2 个索引、4 个 CHECK 约束与 12 条种子数据，导入与幂等性已验证 |
 
 ---
 
