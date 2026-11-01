@@ -1,0 +1,32 @@
+# ============================================================================
+# 编辑器统一约定
+# IDEA、VS Code、vim 都会读这份配置，避免出现「只有某台机器上是 Tab 缩进」
+# 或「文件末尾少了换行」这类没有意义的 diff。
+# ============================================================================
+
+root = true
+
+[*]
+charset                  = utf-8
+end_of_line              = lf
+insert_final_newline     = true
+trim_trailing_whitespace = true
+indent_style             = space
+indent_size              = 4
+
+[*.{xml,json,yml,yaml}]
+indent_size = 4
+
+[*.properties]
+indent_size = 4
+charset     = utf-8
+
+[*.sql]
+indent_size = 4
+
+# Markdown 里行尾两个空格是硬换行，不能删
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{bat,cmd}]
+end_of_line = crlf

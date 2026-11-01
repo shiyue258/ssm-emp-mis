@@ -1,0 +1,30 @@
+# ============================================================================
+# 行尾与文本类型约定
+#
+# 仓库内统一存 LF。Windows 检出时由 Git 按平台转换，
+# 避免同一份文件在不同机器上出现「整文件被改写」的假 diff。
+# ============================================================================
+
+* text=auto eol=lf
+
+# 文本类：显式声明，避免含中文的文件被启发式判定误判
+*.java       text diff=java
+*.xml        text
+*.sql        text
+*.properties text
+*.md         text
+*.yml        text
+*.yaml       text
+
+# 二进制类：不做行尾转换，也不做文本 diff
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.jar  binary
+*.war  binary
+
+# Windows 批处理必须 CRLF，否则 cmd 解析会出问题
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
