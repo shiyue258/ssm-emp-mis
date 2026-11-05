@@ -75,7 +75,7 @@
 | MyBatis-Plus | 3.5.3.1 | 传递引入 mybatis 3.5.10、mybatis-spring 2.0.7、jsqlparser 4.4 |
 | Druid | 1.2.20 | 连接池，`initialSize=5` / `maxActive=20` |
 | MySQL 驱动 | `com.mysql:mysql-connector-j:8.0.33` | 已排除 `protobuf-java`（仅 X DevAPI 需要） |
-| Jackson | 2.15.3 | JSON 序列化 |
+| Jackson | 2.15.3（含 `jackson-datatype-jsr310`） | JSON 序列化，含 `LocalDate` / `LocalDateTime` |
 | Hibernate Validator | 6.2.5.Final | JSR-303 实现，`javax.validation` 命名空间 |
 | Servlet API | 4.0.1（`provided`） | 由 Tomcat 9 提供 |
 | AspectJ | aspectjweaver 1.9.21 | `@Aspect` 切点解析 |
@@ -169,10 +169,12 @@ ssm-emp-mis/
     │   ├── controller/                          ✅ 已建包，待放 EmpController（RESTful 六接口）
     │   ├── service/                             ✅ 已建包，待放 EmpService 接口
     │   │   └── impl/                            ✅ 已建包，待放 EmpServiceImpl（分页多条件 + 事务）
-    │   ├── mapper/                              ✅ 已建包，待放 EmpMapper（BaseMapper）
-    │   ├── entity/                              ✅ 已建包，待放 Emp（JSR-303 + MP 注解）
-    │   ├── dto/                                 ✅ 已建包，待放 EmpQueryDTO
-    │   ├── common/                              ✅ 已建包，待放 Result / BusinessException / GlobalExceptionHandler
+    │   ├── mapper/                              ✅ EmpMapper：BaseMapper 通用 CRUD
+    │   ├── entity/                              ✅ Emp：表映射 + JSR-303 校验
+    │   ├── dto/                                 ✅ EmpQueryDTO：查询条件与分页边界收敛
+    │   ├── common/                              ✅ Result：统一返回（code / message / data）
+    │   │   ├── BusinessException                ⬜ 业务异常
+    │   │   └── GlobalExceptionHandler           ⬜ @RestControllerAdvice
     │   ├── aspect/                              ✅ 已建包，待放 WebLogAspect
     │   └── interceptor/                         ✅ 已建包，待放 LoginInterceptor
     ├── main/resources/
@@ -305,6 +307,10 @@ mvn -B clean package
 | CHECK 约束（负薪资 / 非法 status / 非法 gender） | ✅ 三条均被拒，`ERROR 3819` |
 | `EXPLAIN ... like '张%'` | ✅ `key=idx_emp_name`，`type=range` |
 | `package-info.java` 编译 | ✅ 10 个 `.class` 生成 |
+| `Result` 序列化（ok / fail / unauthorized） | ✅ 三条 JSON 结构与预期一致 |
+| `Emp` 序列化 | ✅ 金额保两位小数，`hireDate` 输出 `"2021-03-15"`，`deleted` 已被 `@JsonIgnore` 屏蔽 |
+| JSR-303 空实体校验 | ✅ 6 条违规（姓名/性别/部门/薪资/入职日期/状态） |
+| JSR-303 非法值校验 | ✅ 负薪资、`gender=X` 均被拒 |
 | `mvn -B test` | ⬜ 尚无测试用例 |
 | Tomcat 9 部署启动 | ⬜ 尚无 `ServletContainersInitConfig`，启动会 404 |
 
@@ -343,7 +349,8 @@ mvn -B clean package
 - [x] **任务 2** 工程初始化：`pom.xml` 版本锁定、`.gitignore`、目录骨架、JDK 17 构建链验证、首次提交
 - [ ] **任务 3** 全注解整合三件套 + 整合验证（临时 Controller / 临时 Service 试跑后删除）
 - [x] **任务 4（部分）** `sql/init.sql`：`emp` 表 + 索引 + CHECK 约束 + 12 条种子数据，已导入验证
-- [ ] **任务 4（剩余）** 分层代码生成与逐层校验、`Result` 封装
+- [x] **任务 4（部分）** 数据契约层：`Emp` / `EmpQueryDTO` / `EmpMapper` / `Result`，序列化与校验已冒烟验证
+- [ ] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ 异常体系
 - [ ] **任务 5** 分页多条件查询 + RESTful 六接口 + ApiFox 调试
 - [ ] **任务 6** JSR-303 / 全局异常 / 登录拦截 / AOP 日志 / 声明式事务 + **事务失效三场景实验**
 - [ ] **任务 7** ApiFox 全量用例集、AI 辅助调优记录、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
@@ -403,6 +410,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-10-31 | 项目定名 `ssm-emp-mis`（技术栈 + 领域 + 系统类型三段式），仓库名 / 构件名 / 产物名三者统一；确认采用「单 Maven 模块 + 内部分层包」结构 |
 | 2026-10-31 | 建立 `src` 十层包骨架（每包一份 `package-info.java` 声明职责）、`jdbc.properties`、`log4j.properties`；`sql/init.sql` 完成 `emp` 表、2 个索引、4 个 CHECK 约束与 12 条种子数据，导入与幂等性已验证 |
 | 2026-11-01 | 补充 `.gitattributes`（行尾归一与文本/二进制类型声明）与 `.editorconfig`（缩进、编码、末尾换行）；README 增加目录导航 |
+| 2026-11-06 | 补齐数据契约层：`Result` 统一返回、`Emp` 实体（表映射 + JSR-303）、`EmpQueryDTO`（分页边界收敛）、`EmpMapper`（BaseMapper）；pom 增加 `jackson-datatype-jsr310`，序列化与校验行为已冒烟验证 |
 
 ---
 

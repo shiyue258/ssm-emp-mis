@@ -126,6 +126,18 @@
             <artifactId>jackson-databind</artifactId>
             <version>${jackson.version}</version>
         </dependency>
+        <!--
+            Java 8 时间类型的 JSON 支持。
+            缺了它，返回 LocalDate / LocalDateTime 会抛
+            InvalidDefinitionException: Java 8 date/time type not supported by default。
+            SpringMVC 的 Jackson2ObjectMapperBuilder 会自动发现并注册本模块，
+            因此 SpringMvcConfig 里不需要手写 registerModule。
+        -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
         <!-- JSR-303 实现：6.x 仍使用 javax.validation 命名空间，与 Spring 5 匹配 -->
         <dependency>
             <groupId>org.hibernate.validator</groupId>
