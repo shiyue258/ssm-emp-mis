@@ -137,6 +137,8 @@
 
 | # | 方法 | 路径 | 说明 | 状态 |
 | :-: | :--- | :--- | :--- | :--- |
+| 0 | GET | `/health` | 框架存活检查（不碰数据库） | ✅ 已实现 |
+| 0 | GET | `/health/db` | 持久层检查，返回 `emp` 表行数 | ✅ 已实现 |
 | 1 | POST | `/emps` | 新增员工 | 待实现 |
 | 2 | DELETE | `/emps/{id}` | 按 ID 删除 | 待实现 |
 | 3 | DELETE | `/emps` | 批量删除（body 传 `List<Integer>`） | 待实现 |
@@ -162,11 +164,13 @@ ssm-emp-mis/
 ├── sql/init.sql                                 ✅ 建库建表 + 约束索引 + 12 条种子数据
 └── src/
     ├── main/java/com/lab/emp/
-    │   ├── config/                              ✅ 已建包，待放 3 个配置类
-    │   │   ├── ServletContainersInitConfig      ⬜ 取代 web.xml，注册 DispatcherServlet + 编码过滤器
-    │   │   ├── SpringConfig                     ⬜ 根容器：Druid、MyBatis-Plus、Mapper 扫描、事务
-    │   │   └── SpringMvcConfig                  ⬜ 子容器：@EnableWebMvc、跨域、拦截器、静态资源
-    │   ├── controller/                          ✅ 已建包，待放 EmpController（RESTful 六接口）
+    │   ├── config/                              ✅ 全注解整合三件套
+    │   │   ├── ServletContainersInitConfig      ✅ 取代 web.xml，注册 DispatcherServlet + 编码过滤器
+    │   │   ├── SpringConfig                     ✅ 根容器：Druid、MyBatis-Plus、Mapper 扫描、事务
+    │   │   └── SpringMvcConfig                  ✅ 子容器：@EnableWebMvc、跨域、静态资源
+    │   ├── controller/
+    │   │   ├── HealthController                 ✅ GET /health、GET /health/db（整合验收）
+    │   │   └── EmpController                    ⬜ RESTful 六接口
     │   ├── service/                             ✅ 已建包，待放 EmpService 接口
     │   │   └── impl/                            ✅ 已建包，待放 EmpServiceImpl（分页多条件 + 事务）
     │   ├── mapper/                              ✅ EmpMapper：BaseMapper 通用 CRUD
@@ -265,7 +269,7 @@ type=range  key=idx_emp_name  key_len=202  rows=2  Extra=Using index condition
 | JDK | 17（Temurin 17.0.21 已验证） | `java -version` |
 | Maven | 3.9+ | `mvn -v`（输出的 Java version 应为 17） |
 | MySQL | 8.0，端口 3306 | `mysql -uroot -p -e "select version()"` |
-| Tomcat | 9.0.x | IDEA → Run Configuration → Tomcat Server |
+| Tomcat | 9.0.x（**9.0.123 已验证**） | `bin/version.sh` |
 
 ### 5.2 初始化数据库与构建
 
@@ -296,6 +300,22 @@ mvn -B clean package
 
 > 这也是「war 名与仓库名一致」的代价——名字长，但换来仓库名、构件名、产物名三者统一。上下文路径在 Tomcat 里是一行配置，可以随时压平。
 
+本地验证采用的方式（与上表等价，可复现）：
+
+```bash
+# 解压版 Tomcat，无需安装、无需 sudo
+curl -LO https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.123/bin/apache-tomcat-9.0.123.tar.gz
+tar -xzf apache-tomcat-9.0.123.tar.gz -C ~/opt
+
+# 把 war 以 ROOT 名字部署，上下文路径即为 "/"
+mv ~/opt/apache-tomcat-9.0.123/webapps/ROOT ~/opt/apache-tomcat-9.0.123/webapps/ROOT.default
+cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
+
+~/opt/apache-tomcat-9.0.123/bin/catalina.sh run   # 前台运行，日志直接打到终端
+```
+
+**关于 `--add-opens`：实测不需要。** JDK 17 的强封装理论上会让反射密集的库报 `InaccessibleObjectException`，本工程实测（清空 `JDK_JAVA_OPTIONS` 与 `CATALINA_OPTS` 后启动）Spring 5.3.31 + MyBatis-Plus 3.5.3.1 + Druid 1.2.20 + Hibernate Validator 6.2.5 组合启动与查库均正常。`pom.xml` 中 surefire 的两条 `--add-opens` 属于测试期兜底，不是运行必需。
+
 ### 5.4 目前验证到哪一步
 
 | 检查项 | 结果 |
@@ -311,8 +331,13 @@ mvn -B clean package
 | `Emp` 序列化 | ✅ 金额保两位小数，`hireDate` 输出 `"2021-03-15"`，`deleted` 已被 `@JsonIgnore` 屏蔽 |
 | JSR-303 空实体校验 | ✅ 6 条违规（姓名/性别/部门/薪资/入职日期/状态） |
 | JSR-303 非法值校验 | ✅ 负薪资、`gender=X` 均被拒 |
+| Tomcat 9.0.123 部署启动 | ✅ 8080 监听，无 `SEVERE`、无 `BeanCreationException` |
+| `GET /health` | ✅ `{"code":200,"message":"success","data":"UP"}` |
+| `GET /health/db` | ✅ `{"code":200,...,"data":12}`，与 `select count(*)` 一致 |
+| 未知路径 / 根路径 / POST /health | ✅ 分别返回 404、404、405 |
+| 无 `--add-opens` 启动 | ✅ 清空相关环境变量后仍正常启动并查库 |
 | `mvn -B test` | ⬜ 尚无测试用例 |
-| Tomcat 9 部署启动 | ⬜ 尚无 `ServletContainersInitConfig`，启动会 404 |
+| `EmpController` 六个接口 | ⬜ 待实现 |
 
 > 这两条验证只证明「依赖选型与构建链在 JDK 17 上成立」，不代表功能可用。功能进度见 [七、路线图](#七路线图任务-27)。
 
@@ -347,7 +372,7 @@ mvn -B clean package
 ## 七、路线图（任务 2–7）
 
 - [x] **任务 2** 工程初始化：`pom.xml` 版本锁定、`.gitignore`、目录骨架、JDK 17 构建链验证、首次提交
-- [ ] **任务 3** 全注解整合三件套 + 整合验证（临时 Controller / 临时 Service 试跑后删除）
+- [x] **任务 3** 全注解整合三件套 + 整合验证（`/health` 与 `/health/db` 已在 Tomcat 9.0.123 上跑通）
 - [x] **任务 4（部分）** `sql/init.sql`：`emp` 表 + 索引 + CHECK 约束 + 12 条种子数据，已导入验证
 - [x] **任务 4（部分）** 数据契约层：`Emp` / `EmpQueryDTO` / `EmpMapper` / `Result`，序列化与校验已冒烟验证
 - [ ] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ 异常体系
@@ -411,6 +436,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-10-31 | 建立 `src` 十层包骨架（每包一份 `package-info.java` 声明职责）、`jdbc.properties`、`log4j.properties`；`sql/init.sql` 完成 `emp` 表、2 个索引、4 个 CHECK 约束与 12 条种子数据，导入与幂等性已验证 |
 | 2026-11-01 | 补充 `.gitattributes`（行尾归一与文本/二进制类型声明）与 `.editorconfig`（缩进、编码、末尾换行）；README 增加目录导航 |
 | 2026-11-06 | 补齐数据契约层：`Result` 统一返回、`Emp` 实体（表映射 + JSR-303）、`EmpQueryDTO`（分页边界收敛）、`EmpMapper`（BaseMapper）；pom 增加 `jackson-datatype-jsr310`，序列化与校验行为已冒烟验证 |
+| 2026-11-07 | 完成全注解整合：`ServletContainersInitConfig` / `SpringConfig` / `SpringMvcConfig` + `HealthController`；在 Tomcat 9.0.123 + JDK 17 上部署验证，`/health` 与 `/health/db` 均返回 200，确认 `BaseMapper` 注入与数据源连通 |
 
 ---
 
