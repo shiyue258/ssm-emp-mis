@@ -1,11 +1,23 @@
 package com.lab.emp.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.DefaultServletHandlerConfigurer;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * SpringMVC 子容器配置。
@@ -46,6 +58,39 @@ public class SpringMvcConfig implements WebMvcConfigurer {
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(3600);
+    }
+
+    /**
+     * 定制 JSON 序列化器，重点是 Java 8 时间类型。
+     *
+     * <p>这里踩过一次坑，值得记下来：{@code @EnableWebMvc} 默认装配的
+     * {@link Jackson2ObjectMapperBuilder} <b>并不会</b>关闭
+     * {@code WRITE_DATES_AS_TIMESTAMPS}——那是 Spring Boot 的
+     * {@code JacksonAutoConfiguration} 才做的事。纯 SSM 环境下不加这段配置，
+     * {@code LocalDate} 会被序列化成 {@code [2021,3,15]} 这样的数组，
+     * 前端拿到的不是日期字符串。
+     *
+     * <p>用 {@code extendMessageConverters} 而不是 {@code configureMessageConverters}：
+     * 后者会清空默认转换器列表，导致 String、Resource 等基础类型的处理一起丢失。
+     */
+    @Override
+    public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+        ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json()
+                .featuresToDisable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .serializerByType(LocalDate.class,
+                        new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
+                .serializerByType(LocalDateTime.class,
+                        new LocalDateTimeSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                .build();
+
+        // 原位替换默认的 Jackson 转换器，保持它在列表中的优先级不变
+        for (int i = 0; i < converters.size(); i++) {
+            if (converters.get(i) instanceof MappingJackson2HttpMessageConverter) {
+                converters.set(i, new MappingJackson2HttpMessageConverter(objectMapper));
+                return;
+            }
+        }
+        converters.add(new MappingJackson2HttpMessageConverter(objectMapper));
     }
 
     /*

@@ -139,16 +139,26 @@
 | :-: | :--- | :--- | :--- | :--- |
 | 0 | GET | `/health` | 框架存活检查（不碰数据库） | ✅ 已实现 |
 | 0 | GET | `/health/db` | 持久层检查，返回 `emp` 表行数 | ✅ 已实现 |
-| 1 | POST | `/emps` | 新增员工 | 待实现 |
-| 2 | DELETE | `/emps/{id}` | 按 ID 删除 | 待实现 |
-| 3 | DELETE | `/emps` | 批量删除（body 传 `List<Integer>`） | 待实现 |
-| 4 | PUT | `/emps` | 修改员工信息 | 待实现 |
-| 5 | GET | `/emps/{id}` | 单条查询 | 待实现 |
-| 6 | GET | `/emps` | 列表 + 多条件模糊 + 分页（`name` / `gender` / `dept` / `page` / `size`） | 待实现 |
-| 7 | POST | `/login` | 登录，写入 session（拦截器放行名单内） | 待实现 |
-| 8 | POST | `/logout` | 退出，清 session | 待实现 |
+| 1 | POST | `/emps` | 新增员工 | ✅ 已实现 |
+| 2 | DELETE | `/emps/{id}` | 按 ID 删除（逻辑删除） | ✅ 已实现 |
+| 3 | DELETE | `/emps` | 批量删除（body 传 `List<Integer>`） | ✅ 已实现 |
+| 4 | PUT | `/emps` | 修改员工信息 | ✅ 已实现 |
+| 5 | GET | `/emps/{id}` | 单条查询 | ✅ 已实现 |
+| 6 | GET | `/emps` | 列表 + 多条件模糊 + 分页（`name` / `gender` / `dept` / `page` / `size`） | ✅ 已实现 |
+| 7 | POST | `/login` | 登录，写入 session（拦截器放行名单内） | ⬜ 待实现 |
+| 8 | POST | `/logout` | 退出，清 session | ⬜ 待实现 |
 
 > 第 7、8 条是指导书「登录权限拦截」的配套实现——没有登录入口就无法演示 401，故单列。
+
+### 3.1 两个容易误解的行为
+
+**其一：`DELETE` 是逻辑删除。** `Emp.deleted` 标了 `@TableLogic`，所以 `DELETE /emps/13` 实际执行的是 `UPDATE emp SET deleted = 1 WHERE emp_id = 13 AND deleted = 0`。表现为：
+
+- 接口层面「删掉了」——`GET /emps/13` 返回「员工不存在」；
+- 数据库层面「还在」——直连查库仍能看到这一行，`deleted = 1`；
+- 重复删除同一个 ID 返回影响 0 行，服务层翻译成「员工不存在或已删除」。
+
+**其二：错误响应也是 HTTP 200。** 统一返回结构把业务结果放在 `code` 字段里，HTTP 状态码保持 200。这是指导书指定的 `code/message/data` 风格，代价是 ApiFox 里不能靠状态码判断成败，要看响应体的 `code`。
 
 ---
 
@@ -170,15 +180,15 @@ ssm-emp-mis/
     │   │   └── SpringMvcConfig                  ✅ 子容器：@EnableWebMvc、跨域、静态资源
     │   ├── controller/
     │   │   ├── HealthController                 ✅ GET /health、GET /health/db（整合验收）
-    │   │   └── EmpController                    ⬜ RESTful 六接口
-    │   ├── service/                             ✅ 已建包，待放 EmpService 接口
-    │   │   └── impl/                            ✅ 已建包，待放 EmpServiceImpl（分页多条件 + 事务）
+    │   │   └── EmpController                    ✅ RESTful 六接口
+    │   ├── service/                             ✅ EmpService 业务接口
+    │   │   └── impl/                            ✅ EmpServiceImpl（分页多条件 + 声明式事务）
     │   ├── mapper/                              ✅ EmpMapper：BaseMapper 通用 CRUD
     │   ├── entity/                              ✅ Emp：表映射 + JSR-303 校验
     │   ├── dto/                                 ✅ EmpQueryDTO：查询条件与分页边界收敛
     │   ├── common/                              ✅ Result：统一返回（code / message / data）
-    │   │   ├── BusinessException                ⬜ 业务异常
-    │   │   └── GlobalExceptionHandler           ⬜ @RestControllerAdvice
+    │   │   ├── BusinessException                ✅ 业务异常（可预期失败）
+    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，三类异常出口
     │   ├── aspect/                              ✅ 已建包，待放 WebLogAspect
     │   └── interceptor/                         ✅ 已建包，待放 LoginInterceptor
     ├── main/resources/
@@ -336,8 +346,22 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | `GET /health/db` | ✅ `{"code":200,...,"data":12}`，与 `select count(*)` 一致 |
 | 未知路径 / 根路径 / POST /health | ✅ 分别返回 404、404、405 |
 | 无 `--add-opens` 启动 | ✅ 清空相关环境变量后仍正常启动并查库 |
+| `GET /emps?page=1&size=5` | ✅ `total=12`、`pages=3`、`records=5`、ID 倒序 |
+| `GET /emps?page=3&size=5` | ✅ 末页 2 条（ID 2、1） |
+| `GET /emps?name=张&dept=研发部` | ✅ 命中 2 条（张敏、张伟） |
+| `GET /emps`（`name="   "`） | ✅ 空白按未传处理，返回 12 条 |
+| `GET /emps/1` | ✅ `hireDate` 输出 `"2021-03-15"`，无 `deleted` 字段 |
+| `GET /emps/9999` | ✅ `code=500`，「员工不存在：9999」 |
+| `POST /emps` | ✅ 插入成功，自增 ID = 13 |
+| `PUT /emps` | ✅ 职位与薪资更新生效（12888.00） |
+| `DELETE /emps/13` | ✅ 接口查不到，数据库物理行仍在且 `deleted=1` |
+| 重复 `DELETE /emps/13` | ✅ 「员工不存在或已删除」 |
+| `DELETE /emps`（批量 2 条） | ✅ `affected=2` |
+| `POST /emps`（空姓名 + 负薪资） | ✅ 「员工姓名不能为空；薪资不能为负数」 |
+| `POST /emps`（非法 JSON） | ✅ 「请求体格式错误，请检查 JSON 结构与字段类型」 |
+| `DELETE /emps`（空数组） | ✅ 「批量删除的 ID 列表不能为空」 |
 | `mvn -B test` | ⬜ 尚无测试用例 |
-| `EmpController` 六个接口 | ⬜ 待实现 |
+| 登录拦截 / AOP 日志 / 事务失效实验 | ⬜ 待实现（任务 6） |
 
 > 这两条验证只证明「依赖选型与构建链在 JDK 17 上成立」，不代表功能可用。功能进度见 [七、路线图](#七路线图任务-27)。
 
@@ -373,12 +397,12 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 - [x] **任务 2** 工程初始化：`pom.xml` 版本锁定、`.gitignore`、目录骨架、JDK 17 构建链验证、首次提交
 - [x] **任务 3** 全注解整合三件套 + 整合验证（`/health` 与 `/health/db` 已在 Tomcat 9.0.123 上跑通）
-- [x] **任务 4（部分）** `sql/init.sql`：`emp` 表 + 索引 + CHECK 约束 + 12 条种子数据，已导入验证
-- [x] **任务 4（部分）** 数据契约层：`Emp` / `EmpQueryDTO` / `EmpMapper` / `Result`，序列化与校验已冒烟验证
-- [ ] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ 异常体系
-- [ ] **任务 5** 分页多条件查询 + RESTful 六接口 + ApiFox 调试
-- [ ] **任务 6** JSR-303 / 全局异常 / 登录拦截 / AOP 日志 / 声明式事务 + **事务失效三场景实验**
-- [ ] **任务 7** ApiFox 全量用例集、AI 辅助调优记录、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
+- [x] **任务 4** `sql/init.sql`：`emp` 表 + 索引 + CHECK 约束 + 12 条种子数据，已导入验证
+- [x] **任务 4** 数据契约层：`Emp` / `EmpQueryDTO` / `EmpMapper` / `Result`，序列化与校验已冒烟验证
+- [x] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ `BusinessException` + `GlobalExceptionHandler`
+- [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证（ApiFox 用例集待整理）
+- [ ] **任务 6** 登录拦截器 / AOP 请求日志 / 声明式事务验证 + **事务失效三场景实验**（JSR-303 与全局异常已在本次接入）
+- [ ] **任务 7** ApiFox 全量用例集、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
 
 ---
 
@@ -437,6 +461,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-01 | 补充 `.gitattributes`（行尾归一与文本/二进制类型声明）与 `.editorconfig`（缩进、编码、末尾换行）；README 增加目录导航 |
 | 2026-11-06 | 补齐数据契约层：`Result` 统一返回、`Emp` 实体（表映射 + JSR-303）、`EmpQueryDTO`（分页边界收敛）、`EmpMapper`（BaseMapper）；pom 增加 `jackson-datatype-jsr310`，序列化与校验行为已冒烟验证 |
 | 2026-11-07 | 完成全注解整合：`ServletContainersInitConfig` / `SpringConfig` / `SpringMvcConfig` + `HealthController`；在 Tomcat 9.0.123 + JDK 17 上部署验证，`/health` 与 `/health/db` 均返回 200，确认 `BaseMapper` 注入与数据源连通 |
+| 2026-11-08 | 补齐业务层与接口：`EmpService` / `EmpServiceImpl`（分页多条件、声明式事务）、`EmpController` 六接口、`BusinessException` 与 `GlobalExceptionHandler`；修正 `LocalDate` 被序列化成数组的问题，八项接口场景验证通过 |
 
 ---
 
