@@ -29,6 +29,7 @@
 - [四、工程结构](#四工程结构)
   - [4.1 为什么是单个 Maven 模块](#41-为什么是单个-maven-模块--内部分层不是多模块)
   - [4.2 数据库设计](#42-数据库设计ssm_empemp)
+  - [4.3 登录用户表](#43-登录用户表ssm_empsys_user)
 - [五、构建与运行](#五构建与运行)
   - [5.2 初始化数据库与构建](#52-初始化数据库与构建)
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
@@ -145,12 +146,21 @@
 | 4 | PUT | `/emps` | 修改员工信息 | ✅ 已实现 |
 | 5 | GET | `/emps/{id}` | 单条查询 | ✅ 已实现 |
 | 6 | GET | `/emps` | 列表 + 多条件模糊 + 分页（`name` / `gender` / `dept` / `page` / `size`） | ✅ 已实现 |
-| 7 | POST | `/login` | 登录，写入 session（拦截器放行名单内） | ⬜ 待实现 |
-| 8 | POST | `/logout` | 退出，清 session | ⬜ 待实现 |
+| 7 | POST | `/login` | 登录，写入 session（拦截器放行名单内） | ✅ 已实现 |
+| 8 | POST | `/logout` | 退出，销毁 session | ✅ 已实现 |
 
 > 第 7、8 条是指导书「登录权限拦截」的配套实现——没有登录入口就无法演示 401，故单列。
+>
+> **除 `/login` 与 `/health` 外，所有接口都要求已登录。** 用 curl 或 ApiFox 调试前先登录拿 Cookie：
+>
+> ```bash
+> curl -c cookie.txt -X POST http://127.0.0.1:8080/login \
+>      -H 'Content-Type: application/json' \
+>      -d '{"username":"admin","password":"123456"}'
+> curl -b cookie.txt http://127.0.0.1:8080/emps
+> ```
 
-### 3.1 两个容易误解的行为
+### 3.1 三个容易误解的行为
 
 **其一：`DELETE` 是逻辑删除。** `Emp.deleted` 标了 `@TableLogic`，所以 `DELETE /emps/13` 实际执行的是 `UPDATE emp SET deleted = 1 WHERE emp_id = 13 AND deleted = 0`。表现为：
 
@@ -158,7 +168,9 @@
 - 数据库层面「还在」——直连查库仍能看到这一行，`deleted = 1`；
 - 重复删除同一个 ID 返回影响 0 行，服务层翻译成「员工不存在或已删除」。
 
-**其二：错误响应也是 HTTP 200。** 统一返回结构把业务结果放在 `code` 字段里，HTTP 状态码保持 200。这是指导书指定的 `code/message/data` 风格，代价是 ApiFox 里不能靠状态码判断成败，要看响应体的 `code`。
+**其二：业务失败用 HTTP 200，认证失败用 HTTP 401。** 统一返回结构把业务结果放在 `code` 字段里，因此「员工不存在」这类失败仍是 HTTP 200，要看响应体的 `code` 判断成败。唯一的例外是未登录：拦截器返回 **HTTP 401**，因为 401 是传输层语义，ApiFox 之类的工具会据此直接标记用例失败，比埋在 body 里更容易发现。
+
+**其三：口令不以明文存储。** `sys_user` 表存的是 `SHA-256(明文)` 的十六进制摘要，比对时把输入做同样运算再比摘要。日志切面里 `password` 字段固定输出 `***`，明文口令不会出现在任何日志中。
 
 ---
 
@@ -171,26 +183,28 @@ ssm-emp-mis/
 ├── pom.xml                                      ✅ 依赖与构建，版本全部锁定
 ├── README.md                                    ✅
 ├── .gitignore                                   ✅
-├── sql/init.sql                                 ✅ 建库建表 + 约束索引 + 12 条种子数据
+├── sql/init.sql                                 ✅ 建库建表 + 约束索引 + 种子数据（emp 12 条 / sys_user 1 条）
 └── src/
     ├── main/java/com/lab/emp/
     │   ├── config/                              ✅ 全注解整合三件套
     │   │   ├── ServletContainersInitConfig      ✅ 取代 web.xml，注册 DispatcherServlet + 编码过滤器
     │   │   ├── SpringConfig                     ✅ 根容器：Druid、MyBatis-Plus、Mapper 扫描、事务
-    │   │   └── SpringMvcConfig                  ✅ 子容器：@EnableWebMvc、跨域、静态资源
+    │   │   └── SpringMvcConfig                  ✅ 子容器：WebMvc、跨域、静态资源、拦截器、Jackson
     │   ├── controller/
     │   │   ├── HealthController                 ✅ GET /health、GET /health/db（整合验收）
+    │   │   ├── AuthController                   ✅ POST /login、POST /logout
     │   │   └── EmpController                    ✅ RESTful 六接口
-    │   ├── service/                             ✅ EmpService 业务接口
-    │   │   └── impl/                            ✅ EmpServiceImpl（分页多条件 + 声明式事务）
-    │   ├── mapper/                              ✅ EmpMapper：BaseMapper 通用 CRUD
-    │   ├── entity/                              ✅ Emp：表映射 + JSR-303 校验
-    │   ├── dto/                                 ✅ EmpQueryDTO：查询条件与分页边界收敛
+    │   ├── service/                             ✅ EmpService、AuthService
+    │   │   └── impl/                            ✅ EmpServiceImpl、AuthServiceImpl
+    │   ├── mapper/                              ✅ EmpMapper、SysUserMapper（BaseMapper）
+    │   ├── entity/                              ✅ Emp（JSR-303）、SysUser
+    │   ├── dto/                                 ✅ EmpQueryDTO、LoginDTO
     │   ├── common/                              ✅ Result：统一返回（code / message / data）
+    │   │   ├── LoginUser                        ✅ 登录态载体（只放必要字段）
     │   │   ├── BusinessException                ✅ 业务异常（可预期失败）
-    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，三类异常出口
-    │   ├── aspect/                              ✅ 已建包，待放 WebLogAspect
-    │   └── interceptor/                         ✅ 已建包，待放 LoginInterceptor
+    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，四类异常出口
+    │   ├── aspect/                              ✅ WebLogAspect：请求日志（口令打码）
+    │   └── interceptor/                         ✅ LoginInterceptor：未登录返回 401
     ├── main/resources/
     │   ├── jdbc.properties                      ✅ 连接串 / 连接池参数
     │   ├── log4j.properties                     ✅ Console 输出，Mapper 包 DEBUG
@@ -267,6 +281,30 @@ type=range  key=idx_emp_name  key_len=202  rows=2  Extra=Using index condition
 前导模糊走索引，`like '%张%'` 不走——这是 B+ 树的结构决定的，不是配置问题。分页多条件查询里如果要对姓名做前后模糊，需要接受全表扫描的代价，或者改用前缀匹配。
 
 **种子数据 12 条**，覆盖 5 个部门、2 名离职员工；「张 / 王 / 刘 / 陈」各 2 人，用来验证姓名模糊查询不会只命中一条；12 条配 `size=5` 正好演示 3 页。
+
+### 4.3 登录用户表：`ssm_emp.sys_user`
+
+```sql
+CREATE TABLE sys_user (
+    user_id       INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+    username      VARCHAR(50)  NOT NULL                COMMENT '登录名',
+    password_hash CHAR(64)     NOT NULL                COMMENT 'SHA-256(明文) 的小写十六进制',
+    display_name  VARCHAR(50)  NOT NULL                COMMENT '显示名',
+    status        TINYINT      NOT NULL DEFAULT 1      COMMENT '1 启用 / 0 停用',
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    UNIQUE KEY uk_sys_user_username (username),
+    CONSTRAINT chk_sys_user_status CHECK (status IN (0, 1))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+```
+
+演示账号：`admin` / `123456`（库中存的是 `8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92`）。
+
+三点说明：
+
+1. **为什么不复用 `emp` 表做登录**：`emp` 是业务数据（员工档案），`sys_user` 是系统身份（能否进系统）。两者生命周期和权限边界都不同——员工离职不一定注销系统账号，管理员也不一定是员工。混在一张表里，后面做权限时必然要拆。
+2. **为什么存摘要而不是明文**：数据库导出、备份、慢查询日志都可能带出表内容。存摘要后，即使这些数据外泄也拿不到原始口令。
+3. **为什么选 SHA-256 而不是 BCrypt**：本项目只依赖 JDK 标准库，不加额外依赖；SHA-256 是快速散列，**抗彩虹表能力弱于 BCrypt/Argon2**，真实系统不应这样用。这一点在 `AuthServiceImpl` 的类注释里也写明了——知道边界比假装没有边界更重要。
 
 ---
 
@@ -360,8 +398,18 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | `POST /emps`（空姓名 + 负薪资） | ✅ 「员工姓名不能为空；薪资不能为负数」 |
 | `POST /emps`（非法 JSON） | ✅ 「请求体格式错误，请检查 JSON 结构与字段类型」 |
 | `DELETE /emps`（空数组） | ✅ 「批量删除的 ID 列表不能为空」 |
+| 未登录 `GET /emps` | ✅ **HTTP 401**，body `{"code":401,...}` |
+| 未登录 `GET /health` | ✅ HTTP 200（放行名单生效） |
+| `POST /login` 错误口令 | ✅ 「用户名或密码错误」 |
+| `POST /login` 空用户名 | ✅ 「用户名不能为空」（校验链路） |
+| `POST /login` 正确口令 | ✅ `code=200`，返回 `displayName=系统管理员`，下发 `JSESSIONID` |
+| 带 Cookie `GET /emps` | ✅ HTTP 200，`total=12` |
+| 带 Cookie `POST /emps` | ✅ HTTP 200，插入成功 |
+| `POST /logout` 后再访问 | ✅ 回到 HTTP 401 |
+| AOP 请求日志 | ✅ `[REQ] AuthController#login 入参=[LoginDTO{username=admin, password=***}]` + `[RESP] 耗时` |
+| 日志中明文口令计数 | ✅ `grep -c 123456` = 0 |
 | `mvn -B test` | ⬜ 尚无测试用例 |
-| 登录拦截 / AOP 日志 / 事务失效实验 | ⬜ 待实现（任务 6） |
+| 事务失效三场景实验 | ⬜ 待实现（任务 6 剩余部分） |
 
 > 这两条验证只证明「依赖选型与构建链在 JDK 17 上成立」，不代表功能可用。功能进度见 [七、路线图](#七路线图任务-27)。
 
@@ -401,7 +449,8 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 4** 数据契约层：`Emp` / `EmpQueryDTO` / `EmpMapper` / `Result`，序列化与校验已冒烟验证
 - [x] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ `BusinessException` + `GlobalExceptionHandler`
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证（ApiFox 用例集待整理）
-- [ ] **任务 6** 登录拦截器 / AOP 请求日志 / 声明式事务验证 + **事务失效三场景实验**（JSR-303 与全局异常已在本次接入）
+- [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
+- [ ] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法）
 - [ ] **任务 7** ApiFox 全量用例集、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
 
 ---
@@ -462,6 +511,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-06 | 补齐数据契约层：`Result` 统一返回、`Emp` 实体（表映射 + JSR-303）、`EmpQueryDTO`（分页边界收敛）、`EmpMapper`（BaseMapper）；pom 增加 `jackson-datatype-jsr310`，序列化与校验行为已冒烟验证 |
 | 2026-11-07 | 完成全注解整合：`ServletContainersInitConfig` / `SpringConfig` / `SpringMvcConfig` + `HealthController`；在 Tomcat 9.0.123 + JDK 17 上部署验证，`/health` 与 `/health/db` 均返回 200，确认 `BaseMapper` 注入与数据源连通 |
 | 2026-11-08 | 补齐业务层与接口：`EmpService` / `EmpServiceImpl`（分页多条件、声明式事务）、`EmpController` 六接口、`BusinessException` 与 `GlobalExceptionHandler`；修正 `LocalDate` 被序列化成数组的问题，八项接口场景验证通过 |
+| 2026-11-09 | 加入登录权限拦截与请求日志：`sys_user` 表（口令存 SHA-256 摘要）、`AuthController`、`LoginInterceptor`（未登录 401）、`WebLogAspect`（口令打码）；切面须与 Controller 同处子容器，已在扫描边界上做排除 |
 
 ---
 

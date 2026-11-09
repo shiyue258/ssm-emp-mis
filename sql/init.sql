@@ -68,3 +68,33 @@ INSERT INTO emp (emp_name, gender, dept, post, salary, hire_date, status, create
 ('陈静', '女', '人事部', '人事经理',    15800.00, '2017-08-16', 1, '2017-08-16 09:00:00', '2017-08-16 09:00:00'),
 ('赵鹏', '男', '财务部', '会计',         9600.00, '2021-05-06', 1, '2021-05-06 09:00:00', '2021-05-06 09:00:00'),
 ('孙丽', '女', '财务部', '财务主管',    19000.00, '2019-12-03', 0, '2019-12-03 09:00:00', '2023-07-15 18:00:00');
+
+-- ----------------------------------------------------------------------------
+-- sys_user 登录用户表
+--   只服务「登录权限拦截」这一个功能，不做角色与细粒度权限（那属于 CMS 项目）。
+--   口令存 SHA-256 摘要而不是明文：即使数据库被导出，也无法直接得到原始口令。
+--   注意 SHA-256 是单向散列而非加盐慢哈希，抗彩虹表能力弱；真实系统应使用
+--   BCrypt / Argon2。这里选 SHA-256 是因为它只依赖 JDK 标准库，不需额外依赖，
+--   且足以说明「口令不落明文」这一设计意图。
+--   演示账号：admin / 123456
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS sys_user;
+
+CREATE TABLE sys_user (
+    user_id       INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+    username      VARCHAR(50)  NOT NULL                COMMENT '登录名',
+    password_hash CHAR(64)     NOT NULL                COMMENT '口令摘要：SHA-256(明文) 的小写十六进制',
+    display_name  VARCHAR(50)  NOT NULL                COMMENT '显示名',
+    status        TINYINT      NOT NULL DEFAULT 1      COMMENT '状态：1 启用 / 0 停用',
+    create_time   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (user_id),
+    UNIQUE KEY uk_sys_user_username (username),
+    CONSTRAINT chk_sys_user_status CHECK (status IN (0, 1))
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '登录用户表';
+
+-- SHA-256('123456') = 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
+INSERT INTO sys_user (username, password_hash, display_name, status, create_time) VALUES
+('admin', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '系统管理员', 1, '2026-01-01 00:00:00');

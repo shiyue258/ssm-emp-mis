@@ -24,16 +24,21 @@ import javax.sql.DataSource;
 /**
  * Spring 根容器配置：数据源、MyBatis-Plus、Mapper 扫描、事务管理器。
  *
- * <p>扫描边界是本类最容易出错的地方。根容器必须排除 {@link Controller}，
- * 否则 Controller 会被实例化两份——根容器一份、子容器一份，
- * 表现是「Service 注入为 null」或「拦截器不生效」。
+ * <p>扫描边界是本类最容易出错的地方，两个排除项各有原因：
+ * <ul>
+ *   <li><b>排除 {@code @Controller}</b>：否则 Controller 会被实例化两份——根容器一份、
+ *       子容器一份，表现是「Service 注入为 null」或「拦截器不生效」；</li>
+ *   <li><b>排除 {@code aspect} 包</b>：切面必须与它代理的 Controller 同处子容器才生效，
+ *       留在根容器里只会多出一个不工作的实例。</li>
+ * </ul>
  */
 @Configuration
 @ComponentScan(
         basePackages = "com.lab.emp",
-        excludeFilters = @ComponentScan.Filter(
-                type = FilterType.ANNOTATION,
-                classes = Controller.class))
+        excludeFilters = {
+                @ComponentScan.Filter(type = FilterType.ANNOTATION, classes = Controller.class),
+                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.lab\\.emp\\.aspect\\..*")
+        })
 @PropertySource("classpath:jdbc.properties")
 @EnableTransactionManagement
 public class SpringConfig {

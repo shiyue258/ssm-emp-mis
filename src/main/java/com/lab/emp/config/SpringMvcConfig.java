@@ -4,14 +4,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import com.lab.emp.interceptor.LoginInterceptor;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.DefaultServletHandlerConfigurer;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.time.LocalDate;
@@ -25,10 +28,19 @@ import java.util.List;
  * <p>{@code @EnableWebMvc} 会注册 HandlerMapping、HandlerAdapter、
  * 消息转换器等一整套组件。它同时意味着「完全接管 SpringMVC 的默认配置」，
  * 因此不要与 {@code <mvc:annotation-driven/>} 同时出现。
+ *
+ * <p>{@code @EnableAspectJAutoProxy} 必须放在这里而不是根容器：切面织入的是
+ * Controller，而 Controller 只存在于子容器。AOP 的 Advisor 不跨容器生效——
+ * 在根容器开启代理，子容器里的 Controller 拿不到任何通知，切面会「注册成功但不执行」。
+ *
+ * <p>扫描范围除 controller 外还包含 aspect：切面组件必须与它要代理的目标
+ * 处于同一个容器，否则同样不生效。根容器侧已通过正则过滤排除 aspect 包，
+ * 避免同一个切面被两个容器各实例化一次。
  */
 @Configuration
 @EnableWebMvc
-@ComponentScan("com.lab.emp.controller")
+@EnableAspectJAutoProxy
+@ComponentScan({"com.lab.emp.controller", "com.lab.emp.aspect"})
 public class SpringMvcConfig implements WebMvcConfigurer {
 
     /**
@@ -93,16 +105,20 @@ public class SpringMvcConfig implements WebMvcConfigurer {
         converters.add(new MappingJackson2HttpMessageConverter(objectMapper));
     }
 
-    /*
-     * 登录拦截器注册位（任务 6 补齐）：
+    /**
+     * 注册登录拦截器。
      *
-     *   @Override
-     *   public void addInterceptors(InterceptorRegistry registry) {
-     *       registry.addInterceptor(new LoginInterceptor())
-     *               .addPathPatterns("/**")
-     *               .excludePathPatterns("/login", "/health", "/health/db");
-     *   }
+     * <p>放行名单里必须包含 {@code /login}：否则「未登录不能访问」会把登录接口本身
+     * 也拦掉，形成死锁。{@code /health} 两条同样放行——它们是给运维和部署脚本用的
+     * 探活端点，不该依赖会话状态。
      *
-     * 现在不写，是因为 LoginInterceptor 尚未实现，提前注册会编译不过。
+     * <p>没有放行 {@code /logout}：退出操作本身就要求已登录，
+     * 未登录时调用返回 401 是合理语义。
      */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new LoginInterceptor())
+                .addPathPatterns("/**")
+                .excludePathPatterns("/login", "/health", "/health/db");
+    }
 }
