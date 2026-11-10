@@ -34,6 +34,7 @@
   - [5.2 初始化数据库与构建](#52-初始化数据库与构建)
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
   - [5.4 目前验证到哪一步](#54-目前验证到哪一步)
+  - [5.5 事务失效三场景实验](#55-事务失效三场景实验)
 - [六、评分点与工程产出的对照](#六评分点与工程产出的对照)
 - [七、路线图](#七路线图任务-27)
 - [八、与实验一的关系](#八与实验一的关系)
@@ -209,7 +210,10 @@ ssm-emp-mis/
     │   ├── jdbc.properties                      ✅ 连接串 / 连接池参数
     │   ├── log4j.properties                     ✅ Console 输出，Mapper 包 DEBUG
     │   └── mapper/EmpMapper.xml                 ⬜ 若采用 XML 映射则放此处
-    └── test/java/com/lab/emp/                   ⬜ 事务失效三场景集成测试
+    └── test/java/com/lab/emp/
+        └── service/
+            ├── TransactionFailureTest          ✅ 4 用例：回滚与三种静默失效对照
+            └── support/TransactionFailureDemo  ✅ 故意写错的被测代码（仅测试期存在）
 ```
 
 每个包目录里放了一个 `package-info.java`，用 Javadoc 声明该包的职责与依赖方向。这样做的目的是：
@@ -408,8 +412,31 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | `POST /logout` 后再访问 | ✅ 回到 HTTP 401 |
 | AOP 请求日志 | ✅ `[REQ] AuthController#login 入参=[LoginDTO{username=admin, password=***}]` + `[RESP] 耗时` |
 | 日志中明文口令计数 | ✅ `grep -c 123456` = 0 |
-| `mvn -B test` | ⬜ 尚无测试用例 |
-| 事务失效三场景实验 | ⬜ 待实现（任务 6 剩余部分） |
+| `mvn -B test` | ✅ Tests run: 4, Failures: 0, Errors: 0 |
+| 事务失效三场景 | ✅ 见 [5.5](#55-事务失效三场景实验)，三个「不回滚」与一个「回滚」同时成立 |
+
+### 5.5 事务失效三场景实验
+
+指导书要求验证「异常被吞掉 / 自调用 / private 方法」三种事务失效。三个场景的共同特征是**静默失效**：不报错、不抛业务异常、日志正常，只有数据不对。因此断言不能看「方法有没有抛异常」，只能看「库里那一行还在不在」。
+
+四个用例放在 `TransactionFailureTest`，被测代码 `TransactionFailureDemo` 位于 `src/test/java`——**故意写错的代码不进生产产物**，只在测试期由包扫描装配。
+
+| 用例 | 破坏的前提 | 现象 | 断言 |
+| :--- | :--- | :--- | :--- |
+| A 对照 | 无（public 方法 + 外部经代理调用 + 异常未捕获） | 正常回滚 | 查库 **0 行** |
+| B 吞异常 | 事务管理器收不到异常信号 | 插入被提交 | 查库 **1 行** |
+| C 自调用 | `this.inner()` 未经过代理 | 内层注解不生效 | 查库 **1 行** |
+| D private 方法 | 代理无法覆写 private，注解被静默忽略 | 注解不生效 | 查库 **1 行** |
+
+**为什么 A 必须存在**：只写 B/C/D 无法排除「整个事务机制压根没配好」这种可能——那时四个用例都会「恰好」留下数据。A 证明了配置是对的，B/C/D 才成立。反过来，B/C/D 证明了插入是真的写进库了，A 的 0 行才不是「插入失败」的假象。两组互相校验。
+
+对应的根因归到一句：
+
+- **B** — `@Transactional` 的回滚触发条件是「方法向外抛出异常」，异常被吃掉等于告诉事务管理器一切正常；
+- **C** — `this` 指向真实对象而非代理，调用链里根本没有事务拦截器；
+- **D** — `AnnotationTransactionAttributeSource` 默认只处理 public 方法，非 public 上的注解直接返回 null（同理 `final`、`static` 方法也不生效）。
+
+> **这个实验顺带暴露了一个生产缺陷。** 首次跑测试时报 `IllegalStateException: No ServletContext set`：`SpringConfig` 的组件扫描把同包的 `SpringMvcConfig`（它本身也是 `@Configuration`）一起扫进了根容器，于是根容器照着 `@EnableWebMvc` 又建了一整套 `HandlerMapping` / `HandlerAdapter`。Web 环境下因为有 ServletContext 而不报错，只是白白多建一套组件——**问题一直存在，直到纯容器测试才暴露**。修复方式是在根容器扫描时按类型排除 `SpringMvcConfig`。修复后回归部署，`/health/db`、登录与列表接口均正常。
 
 > 这两条验证只证明「依赖选型与构建链在 JDK 17 上成立」，不代表功能可用。功能进度见 [七、路线图](#七路线图任务-27)。
 
@@ -450,7 +477,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ `BusinessException` + `GlobalExceptionHandler`
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证（ApiFox 用例集待整理）
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
-- [ ] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法）
+- [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
 - [ ] **任务 7** ApiFox 全量用例集、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
 
 ---
@@ -512,6 +539,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-07 | 完成全注解整合：`ServletContainersInitConfig` / `SpringConfig` / `SpringMvcConfig` + `HealthController`；在 Tomcat 9.0.123 + JDK 17 上部署验证，`/health` 与 `/health/db` 均返回 200，确认 `BaseMapper` 注入与数据源连通 |
 | 2026-11-08 | 补齐业务层与接口：`EmpService` / `EmpServiceImpl`（分页多条件、声明式事务）、`EmpController` 六接口、`BusinessException` 与 `GlobalExceptionHandler`；修正 `LocalDate` 被序列化成数组的问题，八项接口场景验证通过 |
 | 2026-11-09 | 加入登录权限拦截与请求日志：`sys_user` 表（口令存 SHA-256 摘要）、`AuthController`、`LoginInterceptor`（未登录 401）、`WebLogAspect`（口令打码）；切面须与 Controller 同处子容器，已在扫描边界上做排除 |
+| 2026-11-10 | 补首批 JUnit 用例：`TransactionFailureTest` 四例验证事务回滚与三种静默失效；顺带修复根容器误扫 `SpringMvcConfig` 导致的重复 WebMvc 装配，回归部署通过 |
 
 ---
 
