@@ -16,6 +16,19 @@ logs/
 *.tmp
 *.bak
 
+# ---- JVM 崩溃与诊断产物 ----
+# hs_err_pid*.log 是 JVM 崩溃时自动写出的现场快照，replay_pid*.log 是其配套的
+# 编译回放文件；*.hprof 是堆转储。三者都可能包含内存中的业务数据，不应入库。
+hs_err_pid*.log
+replay_pid*.log
+*.hprof
+*.javacore
+
+# ---- 打包与解压残留 ----
+*.war
+*.tar.gz
+*.zip
+
 # ---- 系统文件 ----
 .DS_Store
 Thumbs.db

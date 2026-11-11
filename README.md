@@ -438,6 +438,10 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 > **这个实验顺带暴露了一个生产缺陷。** 首次跑测试时报 `IllegalStateException: No ServletContext set`：`SpringConfig` 的组件扫描把同包的 `SpringMvcConfig`（它本身也是 `@Configuration`）一起扫进了根容器，于是根容器照着 `@EnableWebMvc` 又建了一整套 `HandlerMapping` / `HandlerAdapter`。Web 环境下因为有 ServletContext 而不报错，只是白白多建一套组件——**问题一直存在，直到纯容器测试才暴露**。修复方式是在根容器扫描时按类型排除 `SpringMvcConfig`。修复后回归部署，`/health/db`、登录与列表接口均正常。
 
+### 5.6 故障排查手册
+
+开发与部署期间实际踩过的问题（Tomcat 启动即退出、502 来自代理、日期被序列化成数组、`No ServletContext set`、事务静默不回滚等），按「现象 → 根因 → 处理」逐条记录在 **[docs/troubleshooting.md](docs/troubleshooting.md)**。只收录实测复现过的条目。
+
 > 这两条验证只证明「依赖选型与构建链在 JDK 17 上成立」，不代表功能可用。功能进度见 [七、路线图](#七路线图任务-27)。
 
 ---
@@ -540,6 +544,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-08 | 补齐业务层与接口：`EmpService` / `EmpServiceImpl`（分页多条件、声明式事务）、`EmpController` 六接口、`BusinessException` 与 `GlobalExceptionHandler`；修正 `LocalDate` 被序列化成数组的问题，八项接口场景验证通过 |
 | 2026-11-09 | 加入登录权限拦截与请求日志：`sys_user` 表（口令存 SHA-256 摘要）、`AuthController`、`LoginInterceptor`（未登录 401）、`WebLogAspect`（口令打码）；切面须与 Controller 同处子容器，已在扫描边界上做排除 |
 | 2026-11-10 | 补首批 JUnit 用例：`TransactionFailureTest` 四例验证事务回滚与三种静默失效；顺带修复根容器误扫 `SpringMvcConfig` 导致的重复 WebMvc 装配，回归部署通过 |
+| 2026-11-11 | 新增 `docs/troubleshooting.md`（八条实测故障的排查记录）；`.gitignore` 补齐 JVM 崩溃产物（`hs_err_pid*`、`*.hprof`）与打包残留 |
 
 ---
 
