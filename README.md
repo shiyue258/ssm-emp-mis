@@ -26,6 +26,7 @@
   - [2.3 为什么停在 Spring 5.3 + Tomcat 9](#23-为什么停在-spring-53--tomcat-9-而不是升到-spring-6)
   - [2.5 版本兼容矩阵](#25-版本兼容矩阵)
 - [三、接口清单](#三接口清单)
+  - [3.1 三个容易误解的行为](#31-三个容易误解的行为)
 - [四、工程结构](#四工程结构)
   - [4.1 为什么是单个 Maven 模块](#41-为什么是单个-maven-模块--内部分层不是多模块)
   - [4.2 数据库设计](#42-数据库设计ssm_empemp)
@@ -35,11 +36,13 @@
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
   - [5.4 目前验证到哪一步](#54-目前验证到哪一步)
   - [5.5 事务失效三场景实验](#55-事务失效三场景实验)
+  - [5.6 故障排查手册](#56-故障排查手册)
 - [六、评分点与工程产出的对照](#六评分点与工程产出的对照)
 - [七、路线图](#七路线图任务-27)
 - [八、与实验一的关系](#八与实验一的关系)
 - [九、已知待解决的设计问题](#九已知待解决的设计问题)
 - [十、变更记录](#十变更记录)
+- [附：交付文档](#附交付文档)
 
 ---
 
@@ -370,6 +373,10 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 ### 5.4 目前验证到哪一步
 
+分四组。全部为实际执行结果，未通过的项留在表内并标注 ⬜。
+
+**一、构建与数据库**
+
 | 检查项 | 结果 |
 | :--- | :--- |
 | `mvn -B dependency:resolve`（JDK 17.0.21 / Maven 3.9.12） | ✅ BUILD SUCCESS，38 个构件全部解析 |
@@ -378,30 +385,36 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | `sql/init.sql` 重复导入 | ✅ 幂等，行数仍为 12（先 DROP 再 CREATE） |
 | CHECK 约束（负薪资 / 非法 status / 非法 gender） | ✅ 三条均被拒，`ERROR 3819` |
 | `EXPLAIN ... like '张%'` | ✅ `key=idx_emp_name`，`type=range` |
-| `package-info.java` 编译 | ✅ 10 个 `.class` 生成 |
-| `Result` 序列化（ok / fail / unauthorized） | ✅ 三条 JSON 结构与预期一致 |
-| `Emp` 序列化 | ✅ 金额保两位小数，`hireDate` 输出 `"2021-03-15"`，`deleted` 已被 `@JsonIgnore` 屏蔽 |
-| JSR-303 空实体校验 | ✅ 6 条违规（姓名/性别/部门/薪资/入职日期/状态） |
-| JSR-303 非法值校验 | ✅ 负薪资、`gender=X` 均被拒 |
-| Tomcat 9.0.123 部署启动 | ✅ 8080 监听，无 `SEVERE`、无 `BeanCreationException` |
+| 十个 `package-info.java` 编译 | ✅ 对应 `.class` 全部生成 |
+| `Result` / `Emp` 序列化 | ✅ 金额保两位小数，`hireDate` 输出 `"2021-03-15"`，`deleted` 被 `@JsonIgnore` 屏蔽 |
+| JSR-303 校验 | ✅ 空实体 6 条违规；负薪资、`gender=X` 均被拒 |
+
+**二、接口行为**
+
+| 检查项 | 结果 |
+| :--- | :--- |
 | `GET /health` | ✅ `{"code":200,"message":"success","data":"UP"}` |
-| `GET /health/db` | ✅ `{"code":200,...,"data":12}`，与 `select count(*)` 一致 |
-| 未知路径 / 根路径 / POST /health | ✅ 分别返回 404、404、405 |
-| 无 `--add-opens` 启动 | ✅ 清空相关环境变量后仍正常启动并查库 |
+| `GET /health/db` | ✅ `data=12`，与 `select count(*)` 一致 |
+| 未知路径 / 根路径 / `POST /health` | ✅ 分别返回 404、404、405 |
 | `GET /emps?page=1&size=5` | ✅ `total=12`、`pages=3`、`records=5`、ID 倒序 |
 | `GET /emps?page=3&size=5` | ✅ 末页 2 条（ID 2、1） |
 | `GET /emps?name=张&dept=研发部` | ✅ 命中 2 条（张敏、张伟） |
 | `GET /emps`（`name="   "`） | ✅ 空白按未传处理，返回 12 条 |
-| `GET /emps/1` | ✅ `hireDate` 输出 `"2021-03-15"`，无 `deleted` 字段 |
+| `GET /emps/1` | ✅ 字段完整，`hireDate` 为字符串，无 `deleted` |
 | `GET /emps/9999` | ✅ `code=500`，「员工不存在：9999」 |
 | `POST /emps` | ✅ 插入成功，自增 ID = 13 |
 | `PUT /emps` | ✅ 职位与薪资更新生效（12888.00） |
-| `DELETE /emps/13` | ✅ 接口查不到，数据库物理行仍在且 `deleted=1` |
+| `DELETE /emps/13` | ✅ 接口查不到；数据库物理行仍在且 `deleted=1` |
 | 重复 `DELETE /emps/13` | ✅ 「员工不存在或已删除」 |
 | `DELETE /emps`（批量 2 条） | ✅ `affected=2` |
 | `POST /emps`（空姓名 + 负薪资） | ✅ 「员工姓名不能为空；薪资不能为负数」 |
 | `POST /emps`（非法 JSON） | ✅ 「请求体格式错误，请检查 JSON 结构与字段类型」 |
 | `DELETE /emps`（空数组） | ✅ 「批量删除的 ID 列表不能为空」 |
+
+**三、安全与会话**
+
+| 检查项 | 结果 |
+| :--- | :--- |
 | 未登录 `GET /emps` | ✅ **HTTP 401**，body `{"code":401,...}` |
 | 未登录 `GET /health` | ✅ HTTP 200（放行名单生效） |
 | `POST /login` 错误口令 | ✅ 「用户名或密码错误」 |
@@ -410,6 +423,13 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 带 Cookie `GET /emps` | ✅ HTTP 200，`total=12` |
 | 带 Cookie `POST /emps` | ✅ HTTP 200，插入成功 |
 | `POST /logout` 后再访问 | ✅ 回到 HTTP 401 |
+
+**四、运行环境与测试**
+
+| 检查项 | 结果 |
+| :--- | :--- |
+| Tomcat 9.0.123 部署启动 | ✅ 8080 监听，无 `SEVERE`、无 `BeanCreationException` |
+| 无 `--add-opens` 启动 | ✅ 清空相关环境变量后仍正常启动并查库 |
 | AOP 请求日志 | ✅ `[REQ] AuthController#login 入参=[LoginDTO{username=admin, password=***}]` + `[RESP] 耗时` |
 | 日志中明文口令计数 | ✅ `grep -c 123456` = 0 |
 | `mvn -B test` | ✅ Tests run: 4, Failures: 0, Errors: 0 |
@@ -462,7 +482,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 请求日志记录 | `WebLogAspect` 环绕通知 | 控制台 `[REQ]/[RESP]/[ERR]` 日志 |
 | 登录权限拦截 | `LoginInterceptor` + `/login` | 用例：未登录 401、登录后 200 |
 | 声明式事务 | `@Transactional(rollbackFor)` | 三个失效场景的现象对比表 |
-| AI 交互可追溯 | git 提交历史 + `docs/ai-log/`（规划中） | 提示词、生成结果、人工修正 diff |
+| 过程可追溯 | 十条提交信息 + `docs/troubleshooting.md` | 每次变更的动机、踩过的坑与修复方式 |
 
 **一票否决红线**（来自评分标准第七节，本工程全程规避）：
 
@@ -545,6 +565,18 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-09 | 加入登录权限拦截与请求日志：`sys_user` 表（口令存 SHA-256 摘要）、`AuthController`、`LoginInterceptor`（未登录 401）、`WebLogAspect`（口令打码）；切面须与 Controller 同处子容器，已在扫描边界上做排除 |
 | 2026-11-10 | 补首批 JUnit 用例：`TransactionFailureTest` 四例验证事务回滚与三种静默失效；顺带修复根容器误扫 `SpringMvcConfig` 导致的重复 WebMvc 装配，回归部署通过 |
 | 2026-11-11 | 新增 `docs/troubleshooting.md`（八条实测故障的排查记录）；`.gitignore` 补齐 JVM 崩溃产物（`hs_err_pid*`、`*.hprof`）与打包残留 |
+| 2026-11-12 | 文档修订：目录补两条缺失锚点、`5.4` 验证表按四组重排、排查手册加分类索引、修正一处「声称存在 `docs/ai-log/` 但实际没有」的不实表述；补齐 `docs/` 下三份交付文档，打 tag `v1.0.0` |
+
+---
+
+## 附：交付文档
+
+| 文档 | 内容 |
+| :--- | :--- |
+| [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
+| [docs/api.md](docs/api.md) | 8 个端点的请求/响应示例、状态码与错误码约定、调用顺序示例 |
+| [docs/engineering-checklist.md](docs/engineering-checklist.md) | 28 条开发规范逐条对照，附「未做到的部分」5 项 |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | 8 条实测故障的「现象 → 根因 → 处理」记录 |
 
 ---
 
