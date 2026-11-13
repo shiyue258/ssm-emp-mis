@@ -2,11 +2,15 @@ package com.lab.emp.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.stream.Collectors;
 
@@ -53,6 +57,37 @@ public class GlobalExceptionHandler {
     public Result<Void> handleUnreadable(HttpMessageNotReadableException e) {
         log.warn("请求体解析失败：{}", e.getMessage());
         return Result.fail("请求体格式错误，请检查 JSON 结构与字段类型");
+    }
+
+    /**
+     * 路径存在但不支持该 HTTP 方法，例如对 {@code /health} 发 POST。
+     *
+     * <p>必须显式声明，否则会被下面的兜底分支吞掉：{@code Exception.class} 的优先级最低，
+     * 但 {@code HttpRequestMethodNotSupportedException} 属于 {@code Exception}，
+     * 一旦没有更具体的处理器，就会被翻译成「系统繁忙」并以 HTTP 200 返回——
+     * 调用方看到的是一个业务错误，而真实原因是「方法用错了」。
+     * 这个缺陷曾实际存在，由接口用例集回归时发现。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public Result<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+        log.warn("不支持的请求方法：{}", e.getMethod());
+        return Result.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
+                "不支持的请求方法：" + e.getMethod());
+    }
+
+    /**
+     * 路径变量类型不匹配，例如 {@code GET /emps/abc}。
+     *
+     * <p>同理，不加这一条会被兜底成 HTTP 200 + 「系统繁忙」，
+     * 而正确的语义是 400：客户端传了不该传的东西。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        log.warn("参数类型不匹配：{}={}", e.getName(), e.getValue());
+        return Result.fail(HttpStatus.BAD_REQUEST.value(),
+                "参数格式不正确：" + e.getName());
     }
 
     /** 兜底：未预料的异常。对外模糊，对内完整。 */

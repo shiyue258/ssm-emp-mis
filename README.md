@@ -396,6 +396,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | `GET /health` | ✅ `{"code":200,"message":"success","data":"UP"}` |
 | `GET /health/db` | ✅ `data=12`，与 `select count(*)` 一致 |
 | 未知路径 / 根路径 / `POST /health` | ✅ 分别返回 404、404、405 |
+| `GET /emps/abc`（路径变量非数字） | ✅ HTTP 400，「参数格式不正确：id」 |
 | `GET /emps?page=1&size=5` | ✅ `total=12`、`pages=3`、`records=5`、ID 倒序 |
 | `GET /emps?page=3&size=5` | ✅ 末页 2 条（ID 2、1） |
 | `GET /emps?name=张&dept=研发部` | ✅ 命中 2 条（张敏、张伟） |
@@ -566,6 +567,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-10 | 补首批 JUnit 用例：`TransactionFailureTest` 四例验证事务回滚与三种静默失效；顺带修复根容器误扫 `SpringMvcConfig` 导致的重复 WebMvc 装配，回归部署通过 |
 | 2026-11-11 | 新增 `docs/troubleshooting.md`（八条实测故障的排查记录）；`.gitignore` 补齐 JVM 崩溃产物（`hs_err_pid*`、`*.hprof`）与打包残留 |
 | 2026-11-12 | 文档修订：目录补两条缺失锚点、`5.4` 验证表按四组重排、排查手册加分类索引、修正一处「声称存在 `docs/ai-log/` 但实际没有」的不实表述；补齐 `docs/` 下三份交付文档，打 tag `v1.0.0` |
+| 2026-11-13 | 新增 `docs/test-cases.md`（31 条用例，实际结果全部来自实测）；用例回归时发现并修复兜底异常处理器吞掉 405/400 语义的缺陷 |
 
 ---
 
@@ -575,6 +577,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | :--- | :--- |
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
 | [docs/api.md](docs/api.md) | 8 个端点的请求/响应示例、状态码与错误码约定、调用顺序示例 |
+| [docs/test-cases.md](docs/test-cases.md) | 31 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 28 条开发规范逐条对照，附「未做到的部分」5 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 8 条实测故障的「现象 → 根因 → 处理」记录 |
 
