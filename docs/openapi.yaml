@@ -1,0 +1,395 @@
+openapi: 3.0.3
+
+info:
+  title: ssm-emp-mis API
+  version: 1.0.1
+  description: |
+    EMP 员工管理 MIS 系统后端接口。
+
+    **返回约定**
+    - 业务失败返回 HTTP 200，具体结果看响应体 `code`（500）。
+    - 未登录返回 HTTP 401；方法不支持返回 405；路径变量类型错误返回 400。
+    - 除 `/login` 与 `/health` 外，全部接口要求已登录（`JSESSIONID` Cookie）。
+
+    **本地启动**
+    ```bash
+    docker exec -i dev-mysql mysql --default-character-set=utf8mb4 -uroot -p123456 < sql/init.sql
+    mvn -B clean package
+    cp target/ssm-emp-mis.war "$CATALINA_HOME/webapps/ROOT.war"
+    ```
+    演示账号：`admin` / `123456`。
+
+servers:
+  - url: http://localhost:8080
+    description: 本地 Tomcat，上下文路径设为 `/`
+
+tags:
+  - name: 健康检查
+    description: 部署后验证框架与持久层是否装配成功
+  - name: 认证
+    description: 基于 session 的登录与退出
+  - name: 员工管理
+    description: 员工资源的增删改查、多条件分页与批量删除
+
+security:
+  - cookieAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [健康检查]
+      summary: 框架存活检查
+      description: 只经过 SpringMVC 分发与 JSON 序列化，不访问数据库。
+      security: []
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: integer, example: 200 }
+                  message: { type: string, example: success }
+                  data: { type: string, example: UP }
+
+  /health/db:
+    get:
+      tags: [健康检查]
+      summary: 持久层检查
+      description: 调用 `EmpMapper.selectCount`，返回 `emp` 表行数。数据源、Mapper 注入、分页插件任一异常都会在此暴露。
+      security: []
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: integer, example: 200 }
+                  message: { type: string, example: success }
+                  data: { type: integer, format: int64, example: 12 }
+
+  /login:
+    post:
+      tags: [认证]
+      summary: 登录
+      description: 校验通过后将登录态写入 session，并通过 `Set-Cookie` 下发 `JSESSIONID`。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginDTO'
+      responses:
+        '200':
+          description: |
+            成功时 `code=200` 且返回用户信息；失败时 `code=500`，
+            message 为「用户名或密码错误」或校验提示。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultLoginUser'
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: 登录成功后下发 JSESSIONID
+
+  /logout:
+    post:
+      tags: [认证]
+      summary: 退出登录
+      description: 调用 `session.invalidate()` 销毁会话，之后访问受保护接口返回 401。
+      responses:
+        '200':
+          description: 退出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /emps:
+    get:
+      tags: [员工管理]
+      summary: 列表 + 多条件模糊 + 分页
+      description: |
+        条件之间为 AND 关系；空白字符串视为未传。
+        排序固定为 `emp_id` 倒序，保证分页结果稳定。
+      parameters:
+        - name: name
+          in: query
+          description: 姓名，前后模糊匹配
+          schema: { type: string, example: 张 }
+        - name: gender
+          in: query
+          description: 性别，精确匹配
+          schema: { type: string, enum: [男, 女] }
+        - name: dept
+          in: query
+          description: 部门，精确匹配
+          schema: { type: string, example: 研发部 }
+        - name: page
+          in: query
+          description: 页码，从 1 开始；小于 1 时回落为 1
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: size
+          in: query
+          description: 每页条数；小于 1 时回落为 5，上限 100
+          schema: { type: integer, default: 5, minimum: 1, maximum: 100 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultPageEmp'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [员工管理]
+      summary: 新增员工
+      description: 服务端生成 empId、createTime、updateTime、deleted，请求中传入会被忽略。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmpInput'
+      responses:
+        '200':
+          description: 新增成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [员工管理]
+      summary: 修改员工信息
+      description: 必须携带 `empId`；仅更新非 null 字段。ID 不存在或已逻辑删除时返回「员工不存在或已删除」。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmpInput'
+      responses:
+        '200':
+          description: 修改成功，或业务失败（`code=500`）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [员工管理]
+      summary: 批量删除
+      description: ID 列表放在**请求体**中，不是查询参数。返回实际受影响行数。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { type: integer }
+              example: [14, 15]
+      responses:
+        '200':
+          description: 删除成功，`data` 为受影响行数；空数组返回「批量删除的 ID 列表不能为空」
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: integer, example: 200 }
+                  message: { type: string, example: success }
+                  data: { type: integer, example: 2 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /emps/{id}:
+    get:
+      tags: [员工管理]
+      summary: 单条查询
+      parameters:
+        - $ref: '#/components/parameters/EmpId'
+      responses:
+        '200':
+          description: 查询成功；不存在时 `code=500`、message 为「员工不存在：{id}」
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultEmp'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [员工管理]
+      summary: 删除单条（逻辑删除）
+      description: |
+        实际执行 `UPDATE emp SET deleted = 1`。
+        接口层面查不到该记录，但数据库中物理行仍在；重复删除返回「员工不存在或已删除」。
+      parameters:
+        - $ref: '#/components/parameters/EmpId'
+      responses:
+        '200':
+          description: 删除成功，或业务失败（`code=500`）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+
+  parameters:
+    EmpId:
+      name: id
+      in: path
+      required: true
+      description: 员工 ID，正整数
+      schema: { type: integer, example: 1 }
+
+  responses:
+    Unauthorized:
+      description: 未登录或登录已失效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Result'
+          example:
+            code: 401
+            message: 未登录或登录已失效
+            data: null
+    BadRequest:
+      description: 参数格式不正确（如 ID 传了非数字）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Result'
+          example:
+            code: 400
+            message: 参数格式不正确：id
+            data: null
+
+  schemas:
+    Result:
+      type: object
+      description: 统一返回结构
+      properties:
+        code:
+          type: integer
+          description: 200 成功 / 500 业务失败 / 401 未登录 / 400 参数错误 / 405 方法不支持
+          example: 200
+        message:
+          type: string
+          example: success
+        data:
+          nullable: true
+          description: 业务数据，无数据时为 null
+
+    ResultEmp:
+      allOf:
+        - $ref: '#/components/schemas/Result'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Emp'
+
+    ResultLoginUser:
+      allOf:
+        - $ref: '#/components/schemas/Result'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/LoginUser'
+
+    ResultPageEmp:
+      allOf:
+        - $ref: '#/components/schemas/Result'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/PageEmp'
+
+    PageEmp:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/Emp'
+        total: { type: integer, format: int64, example: 12 }
+        size: { type: integer, example: 5 }
+        current: { type: integer, example: 1 }
+        pages: { type: integer, format: int64, example: 3 }
+
+    Emp:
+      type: object
+      description: 员工实体。金额保留两位小数，日期为 yyyy-MM-dd，`deleted` 不对外暴露。
+      properties:
+        empId: { type: integer, example: 1 }
+        empName: { type: string, maxLength: 50, example: 张伟 }
+        gender: { type: string, enum: [男, 女], example: 男 }
+        dept: { type: string, maxLength: 50, example: 研发部 }
+        post: { type: string, maxLength: 50, nullable: true, example: 后端工程师 }
+        salary: { type: number, format: bigdecimal, example: 18500.00 }
+        hireDate: { type: string, format: date, example: '2021-03-15' }
+        status:
+          type: integer
+          enum: [0, 1]
+          description: 1 在职 / 0 离职
+          example: 1
+        createTime: { type: string, format: date-time, example: '2021-03-15 09:00:00' }
+        updateTime: { type: string, format: date-time, example: '2021-03-15 09:00:00' }
+
+    EmpInput:
+      type: object
+      description: 新增/修改请求体。修改时必须带 `empId`。
+      required: [empName, gender, dept, salary, hireDate, status]
+      properties:
+        empId:
+          type: integer
+          description: 仅修改时需要
+          example: 13
+        empName: { type: string, maxLength: 50, example: 张伟 }
+        gender: { type: string, enum: [男, 女], example: 男 }
+        dept: { type: string, maxLength: 50, example: 研发部 }
+        post: { type: string, maxLength: 50, example: 后端工程师 }
+        salary: { type: number, minimum: 0, example: 18500.00 }
+        hireDate: { type: string, format: date, example: '2021-03-15' }
+        status: { type: integer, enum: [0, 1], example: 1 }
+
+    LoginDTO:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, example: admin }
+        password: { type: string, format: password, example: '123456' }
+
+    LoginUser:
+      type: object
+      description: 登录态载体，不含口令摘要等敏感字段
+      properties:
+        userId: { type: integer, example: 1 }
+        username: { type: string, example: admin }
+        displayName: { type: string, example: 系统管理员 }
