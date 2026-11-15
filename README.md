@@ -14,7 +14,8 @@
 | 数据库 | MySQL 8.0，库 `ssm_emp`，主表 `emp` |
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
-| 状态 | 🚧 **骨架阶段**：工程结构、数据库脚本与依赖蓝图已完成，业务代码尚未开始 |
+| 版本 | `v1.0.1`（`v1.0.0` 之后补充 405/400 修复、31 条用例与 OpenAPI 规范） |
+| 状态 | ✅ **已完成**：10 个接口、31 条接口用例、4 个 JUnit 用例，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -180,7 +181,7 @@
 
 ## 四、工程结构
 
-目标形态（`✅` = 已存在，`⬜` = 待实现）：
+实际形态（`✅` = 已落地，`⬜` = 未采用或待补）：
 
 ```text
 ssm-emp-mis/
@@ -212,7 +213,7 @@ ssm-emp-mis/
     ├── main/resources/
     │   ├── jdbc.properties                      ✅ 连接串 / 连接池参数
     │   ├── log4j.properties                     ✅ Console 输出，Mapper 包 DEBUG
-    │   └── mapper/EmpMapper.xml                 ⬜ 若采用 XML 映射则放此处
+    │   └── mapper/EmpMapper.xml                 未采用：查询全部走 BaseMapper 与条件构造器
     └── test/java/com/lab/emp/
         └── service/
             ├── TransactionFailureTest          ✅ 4 用例：回滚与三种静默失效对照
@@ -461,7 +462,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 ### 5.6 故障排查手册
 
-开发与部署期间实际踩过的问题（Tomcat 启动即退出、502 来自代理、日期被序列化成数组、`No ServletContext set`、事务静默不回滚等），按「现象 → 根因 → 处理」逐条记录在 **[docs/troubleshooting.md](docs/troubleshooting.md)**。只收录实测复现过的条目。
+开发与部署期间实际踩过的问题（Tomcat 启动即退出、502 来自代理、日期被序列化成数组、`No ServletContext set`、事务静默不回滚、405 被兜底处理器吞掉等），按「现象 → 根因 → 处理」逐条记录在 **[docs/troubleshooting.md](docs/troubleshooting.md)**。只收录实测复现过的条目。
 
 > 这两条验证只证明「依赖选型与构建链在 JDK 17 上成立」，不代表功能可用。功能进度见 [七、路线图](#七路线图任务-27)。
 
@@ -569,6 +570,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-12 | 文档修订：目录补两条缺失锚点、`5.4` 验证表按四组重排、排查手册加分类索引、修正一处「声称存在 `docs/ai-log/` 但实际没有」的不实表述；补齐 `docs/` 下三份交付文档，打 tag `v1.0.0` |
 | 2026-11-13 | 新增 `docs/test-cases.md`（31 条用例，实际结果全部来自实测）；用例回归时发现并修复兜底异常处理器吞掉 405/400 语义的缺陷 |
 | 2026-11-14 | 新增 `docs/openapi.yaml`（OpenAPI 3.0.3，6 条路径 10 个操作，`$ref` 全部可解析）；顺带修正文档中「8 个端点」的计数错误 |
+| 2026-11-15 | 排查手册补第 9 条（兜底异常处理器吞掉 405/400 的根因与判据）；README 头部补版本行、修正「状态」为已完成，发布 `v1.0.1` |
 
 ---
 
@@ -581,7 +583,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，可导入 ApiFox / Postman 生成接口树 |
 | [docs/test-cases.md](docs/test-cases.md) | 31 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 28 条开发规范逐条对照，附「未做到的部分」5 项 |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | 8 条实测故障的「现象 → 根因 → 处理」记录 |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 
 ---
 

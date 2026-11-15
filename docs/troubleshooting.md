@@ -9,7 +9,7 @@
 
 ## 索引
 
-八条按故障域分三组，序号对应下文小节标题，可直接按序号检索。
+九条按故障域分四组，序号对应下文小节标题，可直接按序号检索。
 
 **运行环境**（服务起不来、请求打不到）
 
@@ -28,8 +28,13 @@
 - 七、导入 SQL 后中文变成 `æµ‹è¯•` 之类的乱码
 - 八、事务「看起来加了注解却没回滚」
 
+**异常与错误码**（请求成功走完，返回的东西不对）
+
+- 九、400 / 405 变成了 HTTP 200 + 「系统繁忙」
+
 > 分组依据是**故障的暴露方式**：第一组直接报连接错误，第二组启动阶段就异常，
-> 第三组最危险——全程无异常，只能靠核对数据发现。
+> 第三组最危险——全程无异常，只能靠核对数据发现；第四组属于「请求成功、结果不对」，
+> 不核对状态码与响应体就看不出问题。
 
 ---
 
@@ -206,3 +211,49 @@ docker exec -i dev-mysql mysql --default-character-set=utf8mb4 -uroot -p123456 <
 **排查方法**
 
 不要看方法有没有抛异常——三个场景里有两个照样抛异常。**看数据库里那一行在不在**，这是唯一可靠的判据。
+
+---
+
+## 九、400 / 405 变成了 HTTP 200 + 「系统繁忙」
+
+**现象**
+
+对只有 GET 映射的 `/health` 发 POST，期望 405，实际返回：
+
+```
+HTTP/1.1 200
+{"code":500,"message":"系统繁忙，请稍后重试","data":null}
+```
+
+`GET /emps/abc`（路径变量本该是数字）同样返回 200 + 系统繁忙，期望 400。
+
+**根因**
+
+`GlobalExceptionHandler` 里有一条兜底分支：
+
+```java
+@ExceptionHandler(Exception.class)
+public Result<Void> handleOther(Exception e) { ... }
+```
+
+Spring 的 `HttpRequestMethodNotSupportedException`、`MethodArgumentTypeMismatchException` 都继承自 `Exception`。异常处理器按「最具体优先」匹配，但只要**没有更具体的处理器存在**，兜底分支就会接管一切——包括这些本该由框架处理、并带有正确状态码的协议级异常。
+
+于是 405 被翻译成业务错误，HTTP 状态也被拉平成 200。
+
+**为什么隔了很久才发现**
+
+第五次推送时实测过 `POST /health` 返回 405，那时兜底处理器还没写；第六次加入兜底后行为被静默改变，而文档里那句「返回 405」再没人复核。**加入兜底异常处理会改变框架原有的协议行为，这一点不在多数教程的提醒范围内。**
+
+**处理**
+
+为这类异常补具体处理器，并用 `@ResponseStatus` 指定状态码，同时让响应体 `code` 与 HTTP 状态一致：
+
+```java
+@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+@ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+public Result<Void> handleMethodNotSupported(HttpRequestMethodNotSupportedException e) {
+    return Result.fail(405, "不支持的请求方法：" + e.getMethod());
+}
+```
+
+**判据**：兜底处理器只应捕获「你没预料到的东西」。凡是框架自带状态码的异常（404 / 405 / 415 / 400 系列），都应单独列出，否则兜底会成为它们的黑洞。这条由 `docs/test-cases.md` 的 E03、E04 两条用例回归时发现。
