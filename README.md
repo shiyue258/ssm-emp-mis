@@ -6,6 +6,8 @@
   对外提供 EMP 员工管理的 RESTful 接口，并覆盖参数校验、全局异常、统一返回、请求日志、登录拦截与声明式事务。
 </p>
 
+[![CI](https://github.com/shiyue258/ssm-emp-mis/actions/workflows/ci.yml/badge.svg)](https://github.com/shiyue258/ssm-emp-mis/actions/workflows/ci.yml)
+
 | 项 | 内容 |
 | :--- | :--- |
 | 构建 | Maven 3.9.12 |
@@ -571,6 +573,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-13 | 新增 `docs/test-cases.md`（31 条用例，实际结果全部来自实测）；用例回归时发现并修复兜底异常处理器吞掉 405/400 语义的缺陷 |
 | 2026-11-14 | 新增 `docs/openapi.yaml`（OpenAPI 3.0.3，6 条路径 10 个操作，`$ref` 全部可解析）；顺带修正文档中「8 个端点」的计数错误 |
 | 2026-11-15 | 排查手册补第 9 条（兜底异常处理器吞掉 405/400 的根因与判据）；README 头部补版本行、修正「状态」为已完成，发布 `v1.0.1` |
+| 2026-11-16 | 接入 GitHub Actions：MySQL 8 service + 导入 `init.sql` + `mvn clean verify`，失败上传 surefire 报告；README 加构建徽章，规范清单中「无 CI」一项改为已做到 |
 
 ---
 
@@ -582,7 +585,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/api.md](docs/api.md) | 10 个端点的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，可导入 ApiFox / Postman 生成接口树 |
 | [docs/test-cases.md](docs/test-cases.md) | 31 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
-| [docs/engineering-checklist.md](docs/engineering-checklist.md) | 28 条开发规范逐条对照，附「未做到的部分」5 项 |
+| [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 
 ---
