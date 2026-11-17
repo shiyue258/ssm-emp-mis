@@ -233,7 +233,7 @@ Java 的包本身不能被 Git 跟踪（空目录不入库），而 `package-inf
 | 概念 | 本工程的做法 | 说明 |
 | :--- | :--- | :--- |
 | **Maven 模块**（工程结构） | **1 个**：整个仓库就是一个 `war` 工程 | 一次 `mvn package` 产出一个 `ssm-emp-mis.war`，部署一次即可运行 |
-| **代码分层**（包结构） | **8 个包**：`config / controller / service / mapper / entity / dto / common / aspect / interceptor` | 逻辑分层，编译后都在同一个 war 里 |
+| **代码分层**（包结构） | **9 个包**：`config / controller / service / mapper / entity / dto / common / aspect / interceptor` | 逻辑分层，编译后都在同一个 war 里 |
 
 多模块 Maven（`<packaging>pom</packaging>` 的父工程 + 若干 `jar` 子模块）解决的是**构件复用**问题：当 `common` 需要以 jar 形式被别的项目依赖时才值得拆。本工程是单一可部署产物，拆开只会带来三个坏处——老师克隆后根目录没有可运行工程、全注解整合的装配链被拆散到多个 pom、`mvn package` 需要先 `install` 父工程。**所以保持单模块。**
 
@@ -438,6 +438,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 日志中明文口令计数 | ✅ `grep -c 123456` = 0 |
 | `mvn -B test` | ✅ Tests run: 4, Failures: 0, Errors: 0 |
 | 事务失效三场景 | ✅ 见 [5.5](#55-事务失效三场景实验)，三个「不回滚」与一个「回滚」同时成立 |
+| GitHub Actions CI | ✅ run `43783591630`，62 秒通过：建库导入 SQL、4 用例、war 打包全部成功 |
 
 ### 5.5 事务失效三场景实验
 
@@ -479,14 +480,14 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 全注解整合正确 | 三个 `@Configuration` 类 + `ServletContainersInitConfig` | 启动日志、父子容器 Bean 数量、`web.xml` 缺失截图 |
 | 三层架构职责清晰 | `controller / service / mapper` 单向依赖，DTO 隔离入参 | 包结构截图、接口清单 |
 | 增删改查 + 模糊 + 分页 | `EmpController` 六个端点 | ApiFox 用例集、响应截图 |
-| 批量删除 | `DELETE /emps` + `removeByIds` | 用例：正常、空数组、含不存在 ID |
-| JSR-303 校验 | 实体注解 + `@Valid` + `BindingResult` | 用例：空姓名、负薪资、超长字段 |
-| 全局异常处理 | `@RestControllerAdvice` 双方法 | 用例：不存在的 ID、未登录、故意抛异常 |
+| 批量删除 | `DELETE /emps` + `empMapper.deleteBatchIds` | 用例：正常、空数组、含不存在 ID |
+| JSR-303 校验 | 实体注解 + `@Valid`；失败由 `GlobalExceptionHandler` 捕获 `BindException` 统一返回，方法签名不接 `BindingResult` | 用例：空姓名、负薪资、超长字段 |
+| 全局异常处理 | `@RestControllerAdvice`，6 个处理器（业务 / 校验 / 报文不可读 / 405 / 400 / 兜底） | 用例：不存在的 ID、未登录、方法用错 |
 | 统一返回格式 | `Result<T>` | 所有响应的 `code/message/data` 截图 |
 | 请求日志记录 | `WebLogAspect` 环绕通知 | 控制台 `[REQ]/[RESP]/[ERR]` 日志 |
 | 登录权限拦截 | `LoginInterceptor` + `/login` | 用例：未登录 401、登录后 200 |
 | 声明式事务 | `@Transactional(rollbackFor)` | 三个失效场景的现象对比表 |
-| 过程可追溯 | 十条提交信息 + `docs/troubleshooting.md` | 每次变更的动机、踩过的坑与修复方式 |
+| 过程可追溯 | 14 条提交信息 + `docs/troubleshooting.md` | 每次变更的动机、踩过的坑与修复方式 |
 
 **一票否决红线**（来自评分标准第七节，本工程全程规避）：
 
@@ -574,6 +575,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-14 | 新增 `docs/openapi.yaml`（OpenAPI 3.0.3，6 条路径 10 个操作，`$ref` 全部可解析）；顺带修正文档中「8 个端点」的计数错误 |
 | 2026-11-15 | 排查手册补第 9 条（兜底异常处理器吞掉 405/400 的根因与判据）；README 头部补版本行、修正「状态」为已完成，发布 `v1.0.1` |
 | 2026-11-16 | 接入 GitHub Actions：MySQL 8 service + 导入 `init.sql` + `mvn clean verify`，失败上传 surefire 报告；README 加构建徽章，规范清单中「无 CI」一项改为已做到 |
+| 2026-11-17 | 文档与实现对齐：修正包数量（8→9）、批量删除方法名（`removeByIds`→`deleteBatchIds`）、校验与异常处理的实现描述、提交数；`5.4` 补 GitHub Actions 实测记录 |
 
 ---
 
