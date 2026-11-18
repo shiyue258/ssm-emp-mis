@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
-import org.apache.ibatis.logging.log4j.Log4jImpl;
+import org.apache.ibatis.logging.slf4j.Slf4jImpl;
 import org.mybatis.spring.mapper.MapperScannerConfigurer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -124,7 +124,11 @@ public class SpringConfig {
 
         MybatisConfiguration configuration = new MybatisConfiguration();
         configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setLogImpl(Log4jImpl.class);
+        // 用 Slf4jImpl 而不是 Log4jImpl：后者在 MyBatis 3.5.9 起被标记废弃。
+        // 本工程本身通过 slf4j-reload4j 输出，改用 Slf4jImpl 后 SQL 日志仍由
+        // 同一套 log4j.properties 渲染，Logger 名字仍是 Mapper 全限定名，
+        // 因此 log4j.logger.com.lab.emp.mapper=DEBUG 照常生效。
+        configuration.setLogImpl(Slf4jImpl.class);
         factory.setConfiguration(configuration);
 
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();

@@ -576,6 +576,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-15 | 排查手册补第 9 条（兜底异常处理器吞掉 405/400 的根因与判据）；README 头部补版本行、修正「状态」为已完成，发布 `v1.0.1` |
 | 2026-11-16 | 接入 GitHub Actions：MySQL 8 service + 导入 `init.sql` + `mvn clean verify`，失败上传 surefire 报告；README 加构建徽章，规范清单中「无 CI」一项改为已做到 |
 | 2026-11-17 | 文档与实现对齐：修正包数量（8→9）、批量删除方法名（`removeByIds`→`deleteBatchIds`）、校验与异常处理的实现描述、提交数；`5.4` 补 GitHub Actions 实测记录 |
+| 2026-11-18 | 清理编译告警：MyBatis `Log4jImpl` 自 3.5.9 起废弃，改用 `Slf4jImpl`；`-Xlint:all` 复查零告警，SQL 日志格式不变 |
 
 ---
 
