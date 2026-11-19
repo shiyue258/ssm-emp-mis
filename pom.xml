@@ -236,11 +236,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
-                    <argLine>
-                        -Dfile.encoding=UTF-8
-                        --add-opens java.base/java.lang=ALL-UNNAMED
-                        --add-opens java.base/java.util=ALL-UNNAMED
-                    </argLine>
+                    <argLine>-Dfile.encoding=UTF-8</argLine>
                     <trimStackTrace>false</trimStackTrace>
                 </configuration>
             </plugin>

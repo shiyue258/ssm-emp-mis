@@ -104,7 +104,7 @@
 **代价与应对**
 
 - 与指导书声明的版本不符，必须在报告中显式说明「为什么改」和「改完是否仍兼容」。为此本仓库保留 `jdk8-lint` profile：以 `release 8` 再编译一遍，用来量化「哪些代码是 17 独有写法」。
-- JDK 17 的强封装会让反射滥用从「运行时玄学」变成「编译/启动期显式报错」，对 Druid、MyBatis-Plus 这类反射密集的库需要显式 `--add-opens`（已写入 surefire 配置）。
+- JDK 17 的强封装会让反射滥用从「运行时玄学」变成「编译/启动期显式报错」。**不过本工程实测不需要 `--add-opens`**：Spring 5.3 起已适配 17 的封装限制，Druid、MyBatis-Plus 也未触达受限 API（详见 5.3 末尾）。
 
 ### 2.3 为什么停在 Spring 5.3 + Tomcat 9，而不是升到 Spring 6
 
@@ -372,7 +372,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 ~/opt/apache-tomcat-9.0.123/bin/catalina.sh run   # 前台运行，日志直接打到终端
 ```
 
-**关于 `--add-opens`：实测不需要。** JDK 17 的强封装理论上会让反射密集的库报 `InaccessibleObjectException`，本工程实测（清空 `JDK_JAVA_OPTIONS` 与 `CATALINA_OPTS` 后启动）Spring 5.3.31 + MyBatis-Plus 3.5.3.1 + Druid 1.2.20 + Hibernate Validator 6.2.5 组合启动与查库均正常。`pom.xml` 中 surefire 的两条 `--add-opens` 属于测试期兜底，不是运行必需。
+**关于 `--add-opens`：实测不需要。** JDK 17 的强封装理论上会让反射密集的库报 `InaccessibleObjectException`，本工程实测（清空 `JDK_JAVA_OPTIONS` 与 `CATALINA_OPTS` 后启动）Spring 5.3.31 + MyBatis-Plus 3.5.3.1 + Druid 1.2.20 + Hibernate Validator 6.2.5 组合启动与查库均正常。原本 `pom.xml` 的 surefire 配置里预置了两条 `--add-opens` 作兜底，移除后 `mvn test` 4 个用例同样全绿，因此已删除——无效配置留着只会让后来者以为「必须加」。`argLine` 仅保留 `-Dfile.encoding=UTF-8`，它的作用是在默认编码非 UTF-8 的环境（如 Windows 的 GBK）下保证中文断言不乱码。
 
 ### 5.4 目前验证到哪一步
 
@@ -577,6 +577,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-16 | 接入 GitHub Actions：MySQL 8 service + 导入 `init.sql` + `mvn clean verify`，失败上传 surefire 报告；README 加构建徽章，规范清单中「无 CI」一项改为已做到 |
 | 2026-11-17 | 文档与实现对齐：修正包数量（8→9）、批量删除方法名（`removeByIds`→`deleteBatchIds`）、校验与异常处理的实现描述、提交数；`5.4` 补 GitHub Actions 实测记录 |
 | 2026-11-18 | 清理编译告警：MyBatis `Log4jImpl` 自 3.5.9 起废弃，改用 `Slf4jImpl`；`-Xlint:all` 复查零告警，SQL 日志格式不变 |
+| 2026-11-19 | 删除 surefire 中两条无效的 `--add-opens`（移除后 `mvn test` 仍 4 用例全绿）；README 两处相关表述同步更新 |
 
 ---
 
