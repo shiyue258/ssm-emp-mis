@@ -3,6 +3,7 @@ package com.lab.emp.config;
 import com.alibaba.druid.pool.DruidDataSource;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.config.GlobalConfig;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
@@ -134,6 +135,12 @@ public class SpringConfig {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
         interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
         factory.setPlugins(interceptor);
+
+        // 纯 SSM 环境下 MetaObjectHandler 不会自动装配（那是 Boot Starter 的行为），
+        // 必须显式挂到 GlobalConfig，否则 @TableField(fill = ...) 形同虚设且不报错。
+        GlobalConfig globalConfig = new GlobalConfig();
+        globalConfig.setMetaObjectHandler(new MyMetaObjectHandler());
+        factory.setGlobalConfig(globalConfig);
 
         return factory;
     }

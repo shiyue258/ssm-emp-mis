@@ -439,6 +439,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | `mvn -B test` | ✅ Tests run: 4, Failures: 0, Errors: 0 |
 | 事务失效三场景 | ✅ 见 [5.5](#55-事务失效三场景实验)，三个「不回滚」与一个「回滚」同时成立 |
 | GitHub Actions CI | ✅ run `43783591630`，62 秒通过：建库导入 SQL、4 用例、war 打包全部成功 |
+| 字段自动填充 | ✅ INSERT 语句含 `create_time, update_time`；UPDATE 的 SET 子句含 `update_time`（改前由数据库 `ON UPDATE` 兜底，不出现在 SQL 里） |
 
 ### 5.5 事务失效三场景实验
 
@@ -578,6 +579,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-17 | 文档与实现对齐：修正包数量（8→9）、批量删除方法名（`removeByIds`→`deleteBatchIds`）、校验与异常处理的实现描述、提交数；`5.4` 补 GitHub Actions 实测记录 |
 | 2026-11-18 | 清理编译告警：MyBatis `Log4jImpl` 自 3.5.9 起废弃，改用 `Slf4jImpl`；`-Xlint:all` 复查零告警，SQL 日志格式不变 |
 | 2026-11-19 | 删除 surefire 中两条无效的 `--add-opens`（移除后 `mvn test` 仍 4 用例全绿）；README 两处相关表述同步更新 |
+| 2026-11-20 | 补字段自动填充：新增 `MyMetaObjectHandler` 并挂到 `GlobalConfig`（纯 SSM 下不会自动装配）；`Emp` 的 `createTime`/`updateTime` 加 `@TableField(fill)`；INSERT 与 UPDATE 语句已显式携带时间列 |
 
 ---
 

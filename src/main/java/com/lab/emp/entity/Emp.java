@@ -1,6 +1,8 @@
 package com.lab.emp.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -84,10 +86,17 @@ public class Emp implements Serializable {
     @Max(value = 1, message = "状态只能是 0 或 1")
     private Integer status;
 
-    /** 创建时间，由数据库默认值填充，应用层不赋值。 */
+    /**
+     * 创建时间，由 MyBatis-Plus 在插入前填充，应用层与 SQL 都不赋值。
+     *
+     * <p>与「数据库 DEFAULT CURRENT_TIMESTAMP」的区别：后者只在 INSERT 语句不含该列时生效，
+     * 而自动填充是在构建实体时写入属性，插入后手里的对象立刻就有时间，不必回查数据库。
+     */
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 
-    /** 更新时间，由数据库 ON UPDATE 维护。 */
+    /** 更新时间，插入与更新时都填充，覆盖数据库 ON UPDATE 的默认行为。 */
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     /** 逻辑删除标记：0 正常 / 1 已删除。内部字段，不对外暴露。 */
