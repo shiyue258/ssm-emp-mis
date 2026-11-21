@@ -140,6 +140,22 @@ paths:
           in: query
           description: 每页条数；小于 1 时回落为 5，上限 100
           schema: { type: integer, default: 5, minimum: 1, maximum: 100 }
+        - name: sortBy
+          in: query
+          description: |
+            排序字段，白名单：empId / empName / salary / hireDate。
+            越界值回落为 empId —— 排序列无法用占位符，只能拼接，故用白名单而非透传。
+          schema:
+            type: string
+            default: empId
+            enum: [empId, empName, salary, hireDate]
+        - name: sortDir
+          in: query
+          description: 排序方向；只有 asc 表示升序，缺省或非法值一律降序
+          schema:
+            type: string
+            default: desc
+            enum: [asc, desc]
       responses:
         '200':
           description: 查询成功

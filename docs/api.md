@@ -179,8 +179,12 @@ Base URL：`http://localhost:8080`（Tomcat 上下文路径设为 `/`；若保�
 | `dept` | string | — | 部门精确匹配 |
 | `page` | int | 1 | 页码，从 1 开始；<1 回落到 1 |
 | `size` | int | 5 | 每页条数；<1 回落到 5；上限 100 |
+| `sortBy` | string | empId | 排序字段，白名单：`empId` / `empName` / `salary` / `hireDate`；越界值回落 `empId` |
+| `sortDir` | string | desc | `asc` 升序；其余（含缺省、拼错）一律降序 |
 
-请求示例：`GET /emps?name=张&dept=研发部&page=1&size=5`
+> `sortBy` 走**白名单**而不是直接拼进 SQL。排序列无法使用 `?` 占位符，只能拼接，若直接拼用户输入就是注入入口（`sortBy=empName;drop table emp--`）。白名单把可影响的 SQL 片段限制为几个常量，越界即回落默认。
+
+请求示例：`GET /emps?name=张&dept=研发部&page=1&size=5&sortBy=salary&sortDir=asc`
 
 ```json
 {
@@ -200,7 +204,7 @@ Base URL：`http://localhost:8080`（Tomcat 上下文路径设为 `/`；若保�
 }
 ```
 
-排序固定为 `emp_id` 倒序，保证分页结果稳定。
+排序默认 `emp_id` 倒序，保证分页结果稳定；可用 `sortBy` + `sortDir` 改排序（见上表）。
 
 ## 五、调用顺序示例
 

@@ -45,6 +45,16 @@ public class EmpQueryDTO implements Serializable {
     private Integer size;
 
     /**
+     * 排序字段，取值见 {@link com.lab.emp.service.impl.EmpServiceImpl} 的白名单。
+     *
+     * <p>非法值不抛异常，回落默认排序——理由与分页参数相同：它来自 URL。
+     */
+    private String sortBy;
+
+    /** 排序方向：asc / desc，缺省或非法值一律按 desc 处理。 */
+    private String sortDir;
+
+    /**
      * 规范化后的页码：null、0、负数一律回落到第 1 页。
      */
     public int toPageNo() {
@@ -59,5 +69,10 @@ public class EmpQueryDTO implements Serializable {
             return DEFAULT_SIZE;
         }
         return Math.min(size, MAX_SIZE);
+    }
+
+    /** 是否升序。只有显式传 {@code asc}（忽略大小写）才升序，其余一律降序。 */
+    public boolean isAsc() {
+        return "asc".equalsIgnoreCase(sortDir);
     }
 }

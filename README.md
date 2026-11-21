@@ -17,7 +17,7 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.0.1`（`v1.0.0` 之后补充 405/400 修复、31 条用例与 OpenAPI 规范） |
-| 状态 | ✅ **已完成**：10 个接口、31 条接口用例、4 个 JUnit 用例，已在 Tomcat 9 + JDK 17 上端到端验证 |
+| 状态 | ✅ **已完成**：10 个接口、34 条接口用例、4 个 JUnit 用例，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -152,7 +152,7 @@
 | 3 | DELETE | `/emps` | 批量删除（body 传 `List<Integer>`） | ✅ 已实现 |
 | 4 | PUT | `/emps` | 修改员工信息 | ✅ 已实现 |
 | 5 | GET | `/emps/{id}` | 单条查询 | ✅ 已实现 |
-| 6 | GET | `/emps` | 列表 + 多条件模糊 + 分页（`name` / `gender` / `dept` / `page` / `size`） | ✅ 已实现 |
+| 6 | GET | `/emps` | 列表 + 多条件模糊 + 分页（`name` / `gender` / `dept` / `page` / `size` / `sortBy` / `sortDir`） | ✅ 已实现 |
 | 7 | POST | `/login` | 登录，写入 session（拦截器放行名单内） | ✅ 已实现 |
 | 8 | POST | `/logout` | 退出，销毁 session | ✅ 已实现 |
 
@@ -440,6 +440,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 事务失效三场景 | ✅ 见 [5.5](#55-事务失效三场景实验)，三个「不回滚」与一个「回滚」同时成立 |
 | GitHub Actions CI | ✅ run `43783591630`，62 秒通过：建库导入 SQL、4 用例、war 打包全部成功 |
 | 字段自动填充 | ✅ INSERT 语句含 `create_time, update_time`；UPDATE 的 SET 子句含 `update_time`（改前由数据库 `ON UPDATE` 兜底，不出现在 SQL 里） |
+| 列表排序参数 | ✅ `sortBy` 白名单（empId / empName / salary / hireDate）+ `sortDir`；注入尝试 `sortBy=empName;drop table emp--` 回落默认且表完好；默认排序未变 |
 
 ### 5.5 事务失效三场景实验
 
@@ -580,6 +581,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-18 | 清理编译告警：MyBatis `Log4jImpl` 自 3.5.9 起废弃，改用 `Slf4jImpl`；`-Xlint:all` 复查零告警，SQL 日志格式不变 |
 | 2026-11-19 | 删除 surefire 中两条无效的 `--add-opens`（移除后 `mvn test` 仍 4 用例全绿）；README 两处相关表述同步更新 |
 | 2026-11-20 | 补字段自动填充：新增 `MyMetaObjectHandler` 并挂到 `GlobalConfig`（纯 SSM 下不会自动装配）；`Emp` 的 `createTime`/`updateTime` 加 `@TableField(fill)`；INSERT 与 UPDATE 语句已显式携带时间列 |
+| 2026-11-21 | 列表支持排序：`sortBy` 走白名单映射（排序列不能用占位符，直接拼接即有注入风险），越界回落 `empId`；`sortDir` 仅 `asc` 生效，默认仍为 `emp_id` 倒序；用例补至 34 条 |
 
 ---
 
@@ -590,7 +592,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
 | [docs/api.md](docs/api.md) | 10 个端点的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，可导入 ApiFox / Postman 生成接口树 |
-| [docs/test-cases.md](docs/test-cases.md) | 31 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
+| [docs/test-cases.md](docs/test-cases.md) | 34 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 

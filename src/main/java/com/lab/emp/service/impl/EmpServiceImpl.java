@@ -1,6 +1,7 @@
 package com.lab.emp.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lab.emp.common.BusinessException;
 import com.lab.emp.dto.EmpQueryDTO;
@@ -11,7 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 员工业务实现，事务边界所在层。
@@ -34,6 +37,26 @@ public class EmpServiceImpl implements EmpService {
 
     private final EmpMapper empMapper;
 
+    /**
+     * 允许排序的字段白名单。
+     *
+     * <p><b>为什么必须是白名单。</b>排序列无法用 {@code ?} 占位符，只能拼进 SQL，
+     * 直接拼用户传入的字段名就是标准注入点（{@code sortBy=empName;drop table emp--}）。
+     * 白名单把「用户可影响的 SQL 片段」限制成有限的几个常量，越界的键直接回落默认列。
+     *
+     * <p>用静态块 + {@code HashMap} 而不是 {@code Map.of}：后者是 JDK 9 API，
+     * 会让 {@code mvn -Pjdk8-lint} 复核失败，而本工程刻意保持源码在 JDK 8 可编译
+     * （升级到 17 属运行时决策，不引入语法依赖）。
+     */
+    private static final Map<String, SFunction<Emp, ?>> SORTABLE_COLUMNS = new HashMap<>(8);
+
+    static {
+        SORTABLE_COLUMNS.put("empId", Emp::getEmpId);
+        SORTABLE_COLUMNS.put("empName", Emp::getEmpName);
+        SORTABLE_COLUMNS.put("salary", Emp::getSalary);
+        SORTABLE_COLUMNS.put("hireDate", Emp::getHireDate);
+    }
+
     /** 构造器注入：单一构造器时无需 @Autowired，也便于单元测试直接 new。 */
     public EmpServiceImpl(EmpMapper empMapper) {
         this.empMapper = empMapper;
@@ -48,8 +71,15 @@ public class EmpServiceImpl implements EmpService {
         // 静默返回 0 行，排查时极难定位。
         wrapper.like(StringUtils.hasText(condition.getName()), Emp::getEmpName, condition.getName())
                 .eq(StringUtils.hasText(condition.getGender()), Emp::getGender, condition.getGender())
-                .eq(StringUtils.hasText(condition.getDept()), Emp::getDept, condition.getDept())
-                .orderByDesc(Emp::getEmpId);
+                .eq(StringUtils.hasText(condition.getDept()), Emp::getDept, condition.getDept());
+
+        // 排序：白名单外的字段回落 empId，方向缺省为降序，
+        // 保证「不传参数」与升级前的行为完全一致。
+        SFunction<Emp, ?> sortColumn = SORTABLE_COLUMNS.get(condition.getSortBy());
+        if (sortColumn == null) {
+            sortColumn = Emp::getEmpId;
+        }
+        wrapper.orderBy(true, condition.isAsc(), sortColumn);
 
         Page<Emp> page = new Page<>(condition.toPageNo(), condition.toPageSize());
         // 逻辑删除由 MyBatis-Plus 自动追加 deleted = 0，这里不必手写
