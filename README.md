@@ -43,7 +43,7 @@
 - [六、评分点与工程产出的对照](#六评分点与工程产出的对照)
 - [七、路线图](#七路线图任务-27)
 - [八、与实验一的关系](#八与实验一的关系)
-- [九、已知待解决的设计问题](#九已知待解决的设计问题)
+- [九、曾经的设计决策与结论](#九曾经的设计决策与结论)
 - [十、变更记录](#十变更记录)
 - [附：交付文档](#附交付文档)
 
@@ -506,10 +506,13 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 4** `sql/init.sql`：`emp` 表 + 索引 + CHECK 约束 + 12 条种子数据，已导入验证
 - [x] **任务 4** 数据契约层：`Emp` / `EmpQueryDTO` / `EmpMapper` / `Result`，序列化与校验已冒烟验证
 - [x] **任务 4（剩余）** `EmpService` + `EmpServiceImpl`（分页多条件）+ `BusinessException` + `GlobalExceptionHandler`
-- [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证（ApiFox 用例集待整理）
+- [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
-- [ ] **任务 7** ApiFox 全量用例集、"企业开发规范清单"≥10 条、Git tag `v1.0.0`
+- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 34 条，实际结果均为实测
+- [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 29 条，另列 4 项未做到
+- [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
+- [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
 
 ---
 
@@ -534,7 +537,9 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 ---
 
-## 九、已知待解决的设计问题
+## 九、曾经的设计决策与结论
+
+开发初期悬而未决、后来已经定下来的四件事。保留当时的纠结过程，是因为它比单纯的结论更能说明取舍依据——报告里的「问题与解决方案」正好需要这种材料。
 
 ### 9.1 数据库要从零建，不能「沿用实验一」
 
@@ -544,17 +549,25 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 ```
 
+**结论**：已自建完整脚本（建库、建表、4 条 CHECK、2 个索引、12 条种子数据），幂等性实测——连续导入两次行数恒为 12。
+
 ### 9.2 Mapper 用注解还是 XML
 
-两种都符合要求。当前倾向：**主用 `BaseMapper` + 条件构造器**（分页多条件查询用 `LambdaQueryWrapper` 一行搞定），仅对需要显式展示 `if/where/foreach` 的动态 SQL 保留一份 XML。理由：实验一已充分展示 XML 动态 SQL，实验二的增量在「Spring 整合」，不必重复。
+两种都符合要求。当时的倾向是「主用 `BaseMapper` + 条件构造器，仅对动态 SQL 保留一份 XML」，理由是实验一已充分展示 XML 动态 SQL，实验二的增量在 Spring 整合。
+
+**结论**：**全部使用 `BaseMapper` + `LambdaQueryWrapper`，仓库中没有 XML 映射文件**。多条件分页、模糊查询、白名单排序都能用构造器表达，写 XML 属重复劳动。
 
 ### 9.3 密码不能硬编码
 
 `jdbc.properties` 中的密码支持环境变量 `EMP_DB_PASSWORD` 覆盖，默认值仅用于本地开发。评分标准把「硬编码真实账号口令」列为维度三计 0 分的违规项。
 
+**结论**：已按此实现（见 `SpringConfig` 的数据源 Bean）；`.gitignore` 另排除 `jdbc-local.properties` 与 `.env`。
+
 ### 9.4 事务失效三场景如何留证
 
-指导书要求验证「异常被 try-catch 吞掉 / `this` 自调用 / 注解加在 private 方法上」。三者都是**静默失效**——不报错、不抛异常，只能靠数据比对发现。计划写三个 JUnit 用例，各自断言「插入的行仍在库里」，并在报告中给出「现象 → 原因（AOP 代理未生效）→ 验证方法」三段式记录。
+指导书要求验证「异常被 try-catch 吞掉 / `this` 自调用 / 注解加在 private 方法上」。三者都是**静默失效**——不报错、不抛异常，只能靠数据比对发现。
+
+**结论**：已实现为 `TransactionFailureTest` 的 4 个用例（A 对照组 + B/C/D 三种失效），断言只看「库里那一行还在不在」，不看方法有没有抛异常。详见 [5.5](#55-事务失效三场景实验)。
 
 ---
 
@@ -583,6 +596,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-20 | 补字段自动填充：新增 `MyMetaObjectHandler` 并挂到 `GlobalConfig`（纯 SSM 下不会自动装配）；`Emp` 的 `createTime`/`updateTime` 加 `@TableField(fill)`；INSERT 与 UPDATE 语句已显式携带时间列 |
 | 2026-11-21 | 列表支持排序：`sortBy` 走白名单映射（排序列不能用占位符，直接拼接即有注入风险），越界回落 `empId`；`sortDir` 仅 `asc` 生效，默认仍为 `emp_id` 倒序；用例补至 34 条 |
 | 2026-11-22 | 发布 `v1.1.0`：相对 `v1.0.1` 累计 6 条提交，含两个向后兼容的新功能与四项修复/清理；README 版本行同步 |
+| 2026-11-22 | 更新收尾状态：路线图任务 7 拆成四项打勾，ApiFox 如实标为待录入；第九节标题由「已知待解决」改为「曾经的设计决策与结论」，四条各补最终做法与证据位置 |
 
 ---
 
