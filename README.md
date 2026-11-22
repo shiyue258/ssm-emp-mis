@@ -16,7 +16,7 @@
 | 数据库 | MySQL 8.0，库 `ssm_emp`，主表 `emp` |
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
-| 版本 | `v1.0.1`（`v1.0.0` 之后补充 405/400 修复、31 条用例与 OpenAPI 规范） |
+| 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
 | 状态 | ✅ **已完成**：10 个接口、34 条接口用例、4 个 JUnit 用例，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
@@ -582,6 +582,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-19 | 删除 surefire 中两条无效的 `--add-opens`（移除后 `mvn test` 仍 4 用例全绿）；README 两处相关表述同步更新 |
 | 2026-11-20 | 补字段自动填充：新增 `MyMetaObjectHandler` 并挂到 `GlobalConfig`（纯 SSM 下不会自动装配）；`Emp` 的 `createTime`/`updateTime` 加 `@TableField(fill)`；INSERT 与 UPDATE 语句已显式携带时间列 |
 | 2026-11-21 | 列表支持排序：`sortBy` 走白名单映射（排序列不能用占位符，直接拼接即有注入风险），越界回落 `empId`；`sortDir` 仅 `asc` 生效，默认仍为 `emp_id` 倒序；用例补至 34 条 |
+| 2026-11-22 | 发布 `v1.1.0`：相对 `v1.0.1` 累计 6 条提交，含两个向后兼容的新功能与四项修复/清理；README 版本行同步 |
 
 ---
 
