@@ -132,3 +132,30 @@ INSERT INTO dept (dept_name, location, status, create_time, update_time) VALUES
 ('人事部', 'B 座 2 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
 ('财务部', 'B 座 3 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
 ('测试部', 'A 座 4 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+
+-- ----------------------------------------------------------------------------
+-- op_log 操作审计表
+--   只记写操作（POST/PUT/DELETE），由 AuditAspect 自动落库，无写入接口——
+--   任何业务代码都不能伪造或删除一条审计，这是比「加权限控制」更彻底的约束。
+--   不记请求体全文：里面可能有口令，记全文就得再写一套脱敏。
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS op_log;
+
+CREATE TABLE op_log (
+    log_id      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '审计ID',
+    operator    VARCHAR(50)  NOT NULL                COMMENT '操作人登录名；取不到时记 anonymous',
+    action      VARCHAR(10)  NOT NULL                COMMENT 'HTTP 方法：POST/PUT/DELETE',
+    target      VARCHAR(120) NOT NULL                COMMENT '请求路径，含路径变量',
+    detail      VARCHAR(500) NOT NULL DEFAULT ''     COMMENT 'success 或异常摘要',
+    result      TINYINT      NOT NULL                COMMENT '1 成功 / 0 失败',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '发生时间',
+    PRIMARY KEY (log_id),
+    KEY idx_op_log_operator (operator),
+    KEY idx_op_log_create_time (create_time),
+    CONSTRAINT chk_op_log_result CHECK (result IN (0, 1))
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '操作审计表';
+
+-- 说明：审计表不预置数据，随实际调用增长。

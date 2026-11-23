@@ -41,6 +41,14 @@ public class WebLogAspect {
     /** 入参日志的最大长度，超出部分截断。 */
     private static final int MAX_ARG_LENGTH = 300;
 
+    /**
+     * 口令打码的正则：匹配 {@code password=} 之后到下一个分隔符之间的值。
+     *
+     * <p>覆盖 {@code password=} 与 {@code newPassword=} 两种写法（后者包含前者）。
+     */
+    private static final java.util.regex.Pattern MASKED =
+            java.util.regex.Pattern.compile("password=[^,}\\]]*", java.util.regex.Pattern.CASE_INSENSITIVE);
+
     @Pointcut("execution(* com.lab.emp.controller..*.*(..))")
     public void controllerMethods() {
         // 切点声明，方法体为空
@@ -94,6 +102,9 @@ public class WebLogAspect {
             LoginDTO dto = (LoginDTO) arg;
             return "LoginDTO{username=" + dto.getUsername() + ", password=***}";
         }
-        return String.valueOf(arg);
+        // 通用兜底：新增账号、重置口令等 DTO 也带 password / newPassword 字段，
+        // 逐个写 instanceof 分支既啰嗦又容易漏。这里按字段名统一打码，
+        // 无论哪个类的 toString 输出成什么样，只要出现 password= 就会被替换。
+        return MASKED.matcher(String.valueOf(arg)).replaceAll("password=***");
     }
 }

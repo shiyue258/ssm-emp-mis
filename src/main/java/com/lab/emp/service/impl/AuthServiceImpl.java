@@ -3,15 +3,12 @@ package com.lab.emp.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.lab.emp.common.BusinessException;
 import com.lab.emp.common.LoginUser;
+import com.lab.emp.common.PasswordEncoder;
 import com.lab.emp.entity.SysUser;
 import com.lab.emp.mapper.SysUserMapper;
 import com.lab.emp.service.AuthService;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
 /**
  * 登录业务实现。
@@ -49,7 +46,7 @@ public class AuthServiceImpl implements AuthService {
                 .eq(SysUser::getUsername, username));
 
         // 用户不存在与口令错误合并为同一提示，避免用户名枚举
-        if (user == null || !sha256Hex(password).equalsIgnoreCase(user.getPasswordHash())) {
+        if (user == null || !PasswordEncoder.matches(password, user.getPasswordHash())) {
             throw new BusinessException("用户名或密码错误");
         }
         if (user.getStatus() == null || user.getStatus() != 1) {
@@ -57,31 +54,5 @@ public class AuthServiceImpl implements AuthService {
         }
 
         return new LoginUser(user.getUserId(), user.getUsername(), user.getDisplayName());
-    }
-
-    /**
-     * 计算明文口令的 SHA-256 摘要，输出小写十六进制。
-     *
-     * <p>没有用 {@code java.util.HexFormat}（JDK 17 新增）：这里保持 JDK 8 可编译的写法，
-     * 使 {@code mvn -Pjdk8-lint} 仍然通过，从而说明本次升级到 17 是运行时决策，
-     * 而非语法依赖。
-     */
-    private static String sha256Hex(String raw) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(bytes.length * 2);
-            for (byte b : bytes) {
-                String part = Integer.toHexString(b & 0xFF);
-                if (part.length() == 1) {
-                    hex.append('0');
-                }
-                hex.append(part);
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            // JDK 规范要求所有实现必须支持 SHA-256，走到这里说明运行环境本身异常
-            throw new IllegalStateException("当前 JVM 不支持 SHA-256", e);
-        }
     }
 }

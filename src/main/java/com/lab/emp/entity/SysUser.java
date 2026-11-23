@@ -3,6 +3,7 @@ package com.lab.emp.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -27,7 +28,14 @@ public class SysUser implements Serializable {
     /** 登录名，唯一。 */
     private String username;
 
-    /** 口令摘要：SHA-256(明文) 的小写十六进制，长度固定 64。 */
+    /**
+     * 口令摘要：SHA-256(明文) 的小写十六进制，长度固定 64。
+     *
+     * <p>{@code @JsonIgnore} 不是可选项：账号管理接口会把整个实体返回给前端，
+     * 少了这个注解，摘要就会随响应泄露。摘要是不可逆的，但它仍可被离线爆破——
+     * 泄露摘要等于把口令安全性交给攻击者的算力。
+     */
+    @JsonIgnore
     private String passwordHash;
 
     /** 显示名，登录后返回给前端展示。 */
