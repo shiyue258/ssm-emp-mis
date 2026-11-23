@@ -30,6 +30,8 @@ tags:
     description: 基于 session 的登录与退出
   - name: 员工管理
     description: 员工资源的增删改查、多条件分页与批量删除
+  - name: 部门管理
+    description: 部门资源的增删改查；与员工靠部门名称关联，删除前校验、改名级联
 
 security:
   - cookieAuth: []
@@ -270,6 +272,140 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /depts:
+    get:
+      tags: [部门管理]
+      summary: 部门列表
+      description: 不分页——部门是低频变更的基础数据，量级在两位数。
+      parameters:
+        - name: name
+          in: query
+          description: 部门名称，前后模糊
+          schema: { type: string, example: 研 }
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Dept'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [部门管理]
+      summary: 新增部门
+      description: 名称唯一；不与员工表联动。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeptInput'
+      responses:
+        '200':
+          description: 成功，或业务失败（名称重复 / 校验不通过）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags: [部门管理]
+      summary: 修改部门
+      description: |
+        必须带 deptId。**名称变更时会在同一事务内把 emp.dept 的旧名刷成新名**，
+        否则员工将指向一个不存在的部门——这是「用名称做关联」必须付的代价。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeptInput'
+      responses:
+        '200':
+          description: 成功，或业务失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /depts/{id}:
+    get:
+      tags: [部门管理]
+      summary: 部门单条查询
+      parameters:
+        - $ref: '#/components/parameters/DeptId'
+      responses:
+        '200':
+          description: 查询成功；不存在时 code=500
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Dept'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      tags: [部门管理]
+      summary: 删除部门
+      description: 部门下仍有员工时拒绝删除，避免员工指向不存在的部门。
+      parameters:
+        - $ref: '#/components/parameters/DeptId'
+      responses:
+        '200':
+          description: 成功，或业务失败（该部门下仍有 N 名员工，无法删除）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /depts/{id}/employees:
+    get:
+      tags: [部门管理]
+      summary: 该部门下的员工
+      description: 路径中的 id 是**部门 ID**；按部门名称匹配 emp.dept，按 emp_id 升序。
+      parameters:
+        - $ref: '#/components/parameters/DeptId'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Emp'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 components:
   securitySchemes:
     cookieAuth:
@@ -283,6 +419,12 @@ components:
       in: path
       required: true
       description: 员工 ID，正整数
+      schema: { type: integer, example: 1 }
+    DeptId:
+      name: id
+      in: path
+      required: true
+      description: 部门 ID，正整数
       schema: { type: integer, example: 1 }
 
   responses:
@@ -393,6 +535,34 @@ components:
         post: { type: string, maxLength: 50, example: 后端工程师 }
         salary: { type: number, minimum: 0, example: 18500.00 }
         hireDate: { type: string, format: date, example: '2021-03-15' }
+        status: { type: integer, enum: [0, 1], example: 1 }
+
+    Dept:
+      type: object
+      description: 部门。与 emp 靠 deptName 关联，无外键。
+      properties:
+        deptId: { type: integer, example: 1 }
+        deptName: { type: string, maxLength: 50, example: 研发部 }
+        location: { type: string, maxLength: 50, example: A 座 3 层 }
+        status:
+          type: integer
+          enum: [0, 1]
+          description: 1 启用 / 0 停用
+          example: 1
+        createTime: { type: string, format: date-time, example: '2026-01-01 00:00:00' }
+        updateTime: { type: string, format: date-time, example: '2026-01-01 00:00:00' }
+
+    DeptInput:
+      type: object
+      description: 新增/修改请求体。修改时必须带 deptId。
+      required: [deptName, status]
+      properties:
+        deptId:
+          type: integer
+          description: 仅修改时需要
+          example: 1
+        deptName: { type: string, maxLength: 50, example: 研发部 }
+        location: { type: string, maxLength: 50, example: A 座 3 层 }
         status: { type: integer, enum: [0, 1], example: 1 }
 
     LoginDTO:

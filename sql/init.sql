@@ -98,3 +98,37 @@ CREATE TABLE sys_user (
 -- SHA-256('123456') = 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
 INSERT INTO sys_user (username, password_hash, display_name, status, create_time) VALUES
 ('admin', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '系统管理员', 1, '2026-01-01 00:00:00');
+
+-- ----------------------------------------------------------------------------
+-- dept 部门表
+--   与 emp 的关联方式是「部门名称」而非外键：emp.dept 存的是名称字符串，
+--   dept 表通过 dept_name 与之对应。这是刻意的取舍——加 dept_id 外键要改
+--   emp 表结构、六个接口与全部用例，而实验一的表结构需要保持兼容。
+--   代价是部门改名时必须同步更新 emp.dept，重建种子数据时不会出现这个问题。
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS dept;
+
+CREATE TABLE dept (
+    dept_id     INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '部门ID',
+    dept_name   VARCHAR(50)  NOT NULL                COMMENT '部门名称，与 emp.dept 对应',
+    location    VARCHAR(50)  NOT NULL DEFAULT ''     COMMENT '办公地点',
+    status      TINYINT      NOT NULL DEFAULT 1      COMMENT '状态：1 启用 / 0 停用',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (dept_id),
+    UNIQUE KEY uk_dept_name (dept_name),
+    CONSTRAINT chk_dept_status CHECK (status IN (0, 1))
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '部门表';
+
+-- 前 5 条与 emp 表中实际出现的部门一一对应；「测试部」刻意留空，
+-- 用于演示「无员工时允许删除」与「有员工时拒绝删除」的对照。
+INSERT INTO dept (dept_name, location, status, create_time, update_time) VALUES
+('研发部', 'A 座 3 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+('产品部', 'A 座 2 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+('市场部', 'B 座 5 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+('人事部', 'B 座 2 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+('财务部', 'B 座 3 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00'),
+('测试部', 'A 座 4 层', 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00');

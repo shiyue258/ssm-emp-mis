@@ -206,7 +206,68 @@ Base URL：`http://localhost:8080`（Tomcat 上下文路径设为 `/`；若保�
 
 排序默认 `emp_id` 倒序，保证分页结果稳定；可用 `sortBy` + `sortDir` 改排序（见上表）。
 
-## 五、调用顺序示例
+## 五、部门管理
+
+部门与员工靠**部门名称**关联（`emp.dept` 存名称），因此这个模块有两处跨模块行为：删除前校验、改名级联。
+
+### GET /depts
+
+查询参数：`name`（可选，名称模糊）。
+
+```json
+{
+  "code": 200, "message": "success",
+  "data": [
+    { "deptId": 1, "deptName": "研发部", "location": "A 座 3 层", "status": 1,
+      "createTime": "2026-01-01 00:00:00", "updateTime": "2026-01-01 00:00:00" }
+  ]
+}
+```
+
+不分页：部门是低频变更的基础数据，量级在两位数，分页对使用者是负担。
+
+### GET /depts/{id}
+
+不存在时返回 `部门不存在：{id}`。
+
+### POST /depts —— 新增
+
+```json
+{ "deptName": "运维部", "location": "C 座 1 层", "status": 1 }
+```
+
+`status` 不传默认为 1。名称重复返回 `部门名称已存在：{name}`；`deptName` 为空或超 50 字返回校验提示。
+
+### PUT /depts —— 修改
+
+请求体必须带 `deptId`。**名称变更时会在同一事务内把 `emp.dept` 的旧名一并刷成新名**，否则那些员工的部门字段会指向一个不存在的部门。
+
+```json
+{ "deptId": 1, "deptName": "研发中心", "location": "A 座 3 层", "status": 1 }
+```
+
+### DELETE /depts/{id} —— 删除
+
+部门下仍有员工时拒绝：
+
+```json
+{ "code": 500, "message": "该部门下仍有 4 名员工，无法删除", "data": null }
+```
+
+空部门可以正常删除。
+
+### GET /depts/{id}/employees —— 该部门员工
+
+路径里的 `{id}` 是**部门 ID**。按部门名称匹配 `emp.dept`，按 `emp_id` 升序返回，不分页。
+
+```json
+{
+  "code": 200, "message": "success",
+  "data": [ { "empId": 1, "empName": "张伟", "dept": "研发部", "salary": 18500.00 } ]
+}
+```
+
+## 六、调用顺序示例
 
 ```bash
 # 1) 登录，保存 Cookie
@@ -221,7 +282,7 @@ curl -b cookie.txt 'http://127.0.0.1:8080/emps?page=1&size=5'
 curl -b cookie.txt -X POST http://127.0.0.1:8080/logout
 ```
 
-## 六、未实现
+## 七、未实现
 
 | 接口 | 状态 | 说明 |
 | :--- | :--- | :--- |

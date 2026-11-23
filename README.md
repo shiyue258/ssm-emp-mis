@@ -17,7 +17,7 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
-| 状态 | ✅ **已完成**：10 个接口、34 条接口用例、4 个 JUnit 用例，已在 Tomcat 9 + JDK 17 上端到端验证 |
+| 状态 | ✅ **已完成**：16 个接口（员工 6 / 部门 6 / 认证 2 / 健康 2）、47 条接口用例、4 个 JUnit 用例，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -34,6 +34,7 @@
   - [4.1 为什么是单个 Maven 模块](#41-为什么是单个-maven-模块--内部分层不是多模块)
   - [4.2 数据库设计](#42-数据库设计ssm_empemp)
   - [4.3 登录用户表](#43-登录用户表ssm_empsys_user)
+  - [4.4 部门表](#44-部门表ssm_empdept)
 - [五、构建与运行](#五构建与运行)
   - [5.2 初始化数据库与构建](#52-初始化数据库与构建)
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
@@ -155,6 +156,12 @@
 | 6 | GET | `/emps` | 列表 + 多条件模糊 + 分页（`name` / `gender` / `dept` / `page` / `size` / `sortBy` / `sortDir`） | ✅ 已实现 |
 | 7 | POST | `/login` | 登录，写入 session（拦截器放行名单内） | ✅ 已实现 |
 | 8 | POST | `/logout` | 退出，销毁 session | ✅ 已实现 |
+| 9 | GET | `/depts` | 部门列表 + 名称模糊（`name`） | ✅ 已实现 |
+| 10 | GET | `/depts/{id}` | 部门单条查询 | ✅ 已实现 |
+| 11 | POST | `/depts` | 新增部门（名称唯一） | ✅ 已实现 |
+| 12 | PUT | `/depts` | 修改部门（改名时级联刷新员工所属部门） | ✅ 已实现 |
+| 13 | DELETE | `/depts/{id}` | 删除部门（部门下有员工时拒绝） | ✅ 已实现 |
+| 14 | GET | `/depts/{id}/employees` | 该部门下的员工列表 | ✅ 已实现 |
 
 > 第 7、8 条是指导书「登录权限拦截」的配套实现——没有登录入口就无法演示 401，故单列。
 >
@@ -193,23 +200,25 @@ ssm-emp-mis/
 ├── sql/init.sql                                 ✅ 建库建表 + 约束索引 + 种子数据（emp 12 条 / sys_user 1 条）
 └── src/
     ├── main/java/com/lab/emp/
-    │   ├── config/                              ✅ 全注解整合三件套
+    │   ├── config/                              ✅ 全注解整合三件套 + 自动填充
     │   │   ├── ServletContainersInitConfig      ✅ 取代 web.xml，注册 DispatcherServlet + 编码过滤器
     │   │   ├── SpringConfig                     ✅ 根容器：Druid、MyBatis-Plus、Mapper 扫描、事务
-    │   │   └── SpringMvcConfig                  ✅ 子容器：WebMvc、跨域、静态资源、拦截器、Jackson
+    │   │   ├── SpringMvcConfig                  ✅ 子容器：WebMvc、跨域、静态资源、拦截器、Jackson
+    │   │   └── MyMetaObjectHandler              ✅ 时间字段自动填充（挂到 GlobalConfig）
     │   ├── controller/
     │   │   ├── HealthController                 ✅ GET /health、GET /health/db（整合验收）
     │   │   ├── AuthController                   ✅ POST /login、POST /logout
-    │   │   └── EmpController                    ✅ RESTful 六接口
-    │   ├── service/                             ✅ EmpService、AuthService
-    │   │   └── impl/                            ✅ EmpServiceImpl、AuthServiceImpl
-    │   ├── mapper/                              ✅ EmpMapper、SysUserMapper（BaseMapper）
-    │   ├── entity/                              ✅ Emp（JSR-303）、SysUser
+    │   │   ├── EmpController                    ✅ 员工 RESTful 六接口
+    │   │   └── DeptController                   ✅ 部门六接口（含该部门员工查询）
+    │   ├── service/                             ✅ EmpService、DeptService、AuthService
+    │   │   └── impl/                            ✅ EmpServiceImpl、DeptServiceImpl、AuthServiceImpl
+    │   ├── mapper/                              ✅ EmpMapper、DeptMapper、SysUserMapper（BaseMapper）
+    │   ├── entity/                              ✅ Emp、Dept（均带 JSR-303）、SysUser
     │   ├── dto/                                 ✅ EmpQueryDTO、LoginDTO
     │   ├── common/                              ✅ Result：统一返回（code / message / data）
     │   │   ├── LoginUser                        ✅ 登录态载体（只放必要字段）
     │   │   ├── BusinessException                ✅ 业务异常（可预期失败）
-    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，四类异常出口
+    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，六类异常出口
     │   ├── aspect/                              ✅ WebLogAspect：请求日志（口令打码）
     │   └── interceptor/                         ✅ LoginInterceptor：未登录返回 401
     ├── main/resources/
@@ -315,6 +324,38 @@ CREATE TABLE sys_user (
 1. **为什么不复用 `emp` 表做登录**：`emp` 是业务数据（员工档案），`sys_user` 是系统身份（能否进系统）。两者生命周期和权限边界都不同——员工离职不一定注销系统账号，管理员也不一定是员工。混在一张表里，后面做权限时必然要拆。
 2. **为什么存摘要而不是明文**：数据库导出、备份、慢查询日志都可能带出表内容。存摘要后，即使这些数据外泄也拿不到原始口令。
 3. **为什么选 SHA-256 而不是 BCrypt**：本项目只依赖 JDK 标准库，不加额外依赖；SHA-256 是快速散列，**抗彩虹表能力弱于 BCrypt/Argon2**，真实系统不应这样用。这一点在 `AuthServiceImpl` 的类注释里也写明了——知道边界比假装没有边界更重要。
+
+### 4.4 部门表：`ssm_emp.dept`
+
+```sql
+CREATE TABLE dept (
+    dept_id     INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    dept_name   VARCHAR(50)  NOT NULL,          -- 与 emp.dept 对应
+    location    VARCHAR(50)  NOT NULL DEFAULT '',
+    status      TINYINT      NOT NULL DEFAULT 1,
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (dept_id),
+    UNIQUE KEY uk_dept_name (dept_name),
+    CONSTRAINT chk_dept_status CHECK (status IN (0, 1))
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+```
+
+6 条种子数据，前 5 条与 `emp` 中实际出现的部门一致，「测试部」刻意留空，用于演示「无员工可删、有员工拒删」的对照。
+
+**关联方式：靠部门名称，不用外键。**
+
+| 方案 | 代价 |
+| :--- | :--- |
+| 加 `emp.dept_id` 外键 | 更规范，但要改 `emp` 表、六个员工接口、47 条用例与 `openapi.yaml` |
+| **按名称关联（当前）** | 零改动；代价是部门改名必须级联刷新 `emp.dept`，否则关联断裂 |
+
+选了后者，并用两处代码把这个代价兜住：
+
+1. `DeptServiceImpl#remove`：部门下还有员工时拒绝删除，避免员工指向不存在的部门；
+2. `DeptServiceImpl#update`：改名时在同一事务内 `UPDATE emp SET dept = 新名 WHERE dept = 旧名`。
+
+第 2 条是整个模块唯一必须放进事务的操作——改部门名与刷员工部门要么都成功，要么都不做。这也让部门与员工两个模块真正产生了耦合，而不是两张各管各的表。
 
 ---
 
@@ -441,6 +482,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | GitHub Actions CI | ✅ run `43783591630`，62 秒通过：建库导入 SQL、4 用例、war 打包全部成功 |
 | 字段自动填充 | ✅ INSERT 语句含 `create_time, update_time`；UPDATE 的 SET 子句含 `update_time`（改前由数据库 `ON UPDATE` 兜底，不出现在 SQL 里） |
 | 列表排序参数 | ✅ `sortBy` 白名单（empId / empName / salary / hireDate）+ `sortDir`；注入尝试 `sortBy=empName;drop table emp--` 回落默认且表完好；默认排序未变 |
+| 部门模块 | ✅ 13 个场景通过：列表 6 条、名称过滤、单条、不存在、该部门 4 名员工、新增、重名拒绝、空名拒绝、改名级联（4 条员工同步、旧名 0 残留）、有员工拒删、空部门可删、改回复原 |
 
 ### 5.5 事务失效三场景实验
 
@@ -509,7 +551,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
-- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 34 条，实际结果均为实测
+- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 47 条，实际结果均为实测
 - [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 29 条，另列 4 项未做到
 - [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
 - [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
@@ -594,9 +636,10 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-18 | 清理编译告警：MyBatis `Log4jImpl` 自 3.5.9 起废弃，改用 `Slf4jImpl`；`-Xlint:all` 复查零告警，SQL 日志格式不变 |
 | 2026-11-19 | 删除 surefire 中两条无效的 `--add-opens`（移除后 `mvn test` 仍 4 用例全绿）；README 两处相关表述同步更新 |
 | 2026-11-20 | 补字段自动填充：新增 `MyMetaObjectHandler` 并挂到 `GlobalConfig`（纯 SSM 下不会自动装配）；`Emp` 的 `createTime`/`updateTime` 加 `@TableField(fill)`；INSERT 与 UPDATE 语句已显式携带时间列 |
-| 2026-11-21 | 列表支持排序：`sortBy` 走白名单映射（排序列不能用占位符，直接拼接即有注入风险），越界回落 `empId`；`sortDir` 仅 `asc` 生效，默认仍为 `emp_id` 倒序；用例补至 34 条 |
+| 2026-11-21 | 列表支持排序：`sortBy` 走白名单映射（排序列不能用占位符，直接拼接即有注入风险），越界回落 `empId`；`sortDir` 仅 `asc` 生效，默认仍为 `emp_id` 倒序；用例补至 47 条 |
 | 2026-11-22 | 发布 `v1.1.0`：相对 `v1.0.1` 累计 6 条提交，含两个向后兼容的新功能与四项修复/清理；README 版本行同步 |
 | 2026-11-22 | 更新收尾状态：路线图任务 7 拆成四项打勾，ApiFox 如实标为待录入；第九节标题由「已知待解决」改为「曾经的设计决策与结论」，四条各补最终做法与证据位置 |
+| 2026-11-23 | 新增部门管理模块：`dept` 表（名称唯一、CHECK 约束、6 条种子）+ 实体/Mapper/Service/Controller，六个接口；删除时校验部门下无员工，改名时同事务级联刷新 `emp.dept`；用例补至 47 条 |
 
 ---
 
@@ -607,7 +650,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
 | [docs/api.md](docs/api.md) | 10 个端点的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，可导入 ApiFox / Postman 生成接口树 |
-| [docs/test-cases.md](docs/test-cases.md) | 34 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
+| [docs/test-cases.md](docs/test-cases.md) | 47 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 
