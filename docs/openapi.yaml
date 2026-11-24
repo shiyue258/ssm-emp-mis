@@ -198,7 +198,10 @@ paths:
 
     put:
       tags: [员工管理]
-      summary: 修改员工信息
+      summary: 修改员工
+      description: |
+        修改薪资时会同步写入一条薪资标准（生效日为当月 1 日，同月重复调薪覆盖），
+        之后补生成历史月份仍按当时的标准计算。dept 必须已存在且处于启用状态。信息
       description: 必须携带 `empId`；仅更新非 null 字段。ID 不存在或已逻辑删除时返回「员工不存在或已删除」。
       requestBody:
         required: true
@@ -610,7 +613,8 @@ paths:
       tags: [薪资管理]
       summary: 按月批量生成
       description: |
-        对在职员工逐个生成：base 取 emp.salary，扣款按当月考勤计算。
+        对在职员工逐个生成：base 取自「薪资标准」中生效日不晚于该月末的最后一条
+        （查不到才回退 emp.salary），扣款按当月考勤计算。
         已存在的员工跳过，不覆盖已有记录。
       parameters:
         - name: month

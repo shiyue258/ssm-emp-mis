@@ -16,7 +16,7 @@
 | 数据库 | MySQL 8.0，库 `ssm_emp`，主表 `emp` |
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
-| 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
+| 版本 | `v1.3.0`：相对 `v1.2.0` 新增薪资标准表（按生效日期）、薪资重算与界面优化 |
 | 表数量 | 6 张：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard`（另有审计表 `op_log`） |
 | 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、80 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
@@ -233,18 +233,27 @@ ssm-emp-mis/
     │   │   ├── HealthController                 ✅ GET /health、GET /health/db（整合验收）
     │   │   ├── AuthController                   ✅ POST /login、POST /logout
     │   │   ├── EmpController                    ✅ 员工 RESTful 六接口
-    │   │   └── DeptController                   ✅ 部门六接口（含该部门员工查询）
-    │   ├── service/                             ✅ EmpService、DeptService、AuthService
-    │   │   └── impl/                            ✅ EmpServiceImpl、DeptServiceImpl、AuthServiceImpl
-    │   ├── mapper/                              ✅ EmpMapper、DeptMapper、SysUserMapper（BaseMapper）
-    │   ├── entity/                              ✅ Emp、Dept（均带 JSR-303）、SysUser
-    │   ├── dto/                                 ✅ EmpQueryDTO、LoginDTO
+    │   │   ├── DeptController                   ✅ 部门六接口（含该部门员工查询）
+    │   │   ├── AttendanceController             ✅ 考勤六接口（含月度汇总）
+    │   │   ├── SalaryController                 ✅ 薪资七接口（生成 / 重算 / 发放）
+    │   │   ├── UserController                   ✅ 账号六接口
+    │   │   └── OpLogController                  ✅ 审计查询（只读）
+    │   ├── service/                             ✅ Emp / Dept / Attendance / Salary / User / Auth / OpLog
+    │   │   └── impl/                            ✅ 对应七个实现（事务边界所在层）
+    │   ├── mapper/                              ✅ 六个 BaseMapper（Emp / Dept / SysUser / Attendance / SalaryRecord / SalaryStandard / OpLog）
+    │   ├── entity/                              ✅ 七个实体，均带 JSR-303；时间字段自动填充
+    │   ├── dto/                                 ✅ EmpQueryDTO、LoginDTO、AttendanceSummaryVO、SalaryGenerateResult、三个用户 DTO
     │   ├── common/                              ✅ Result：统一返回（code / message / data）
     │   │   ├── LoginUser                        ✅ 登录态载体（只放必要字段）
+    │   │   ├── PasswordEncoder                  ✅ SHA-256 摘要（登录与账号管理共用）
+    │   │   ├── SalaryRule                       ✅ 日薪与扣款规则（21.75 天、迟到早退 20 元）
     │   │   ├── BusinessException                ✅ 业务异常（可预期失败）
-    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，六类异常出口
+    │   │   └── GlobalExceptionHandler           ✅ @RestControllerAdvice，九类异常出口
     │   ├── aspect/                              ✅ WebLogAspect：请求日志（口令打码）
+    │   │   └── AuditAspect                      ✅ 写操作落库到 op_log（REQUIRES_NEW）
     │   └── interceptor/                         ✅ LoginInterceptor：未登录返回 401
+    ├── main/webapp/
+    │   └── index.html                           ✅ 单页管理界面（原生 HTML/CSS/fetch，零外部依赖）
     ├── main/resources/
     │   ├── jdbc.properties                      ✅ 连接串 / 连接池参数
     │   ├── log4j.properties                     ✅ Console 输出，Mapper 包 DEBUG
@@ -589,6 +598,11 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 部门模块 | ✅ 13 个场景通过：列表 6 条、名称过滤、单条、不存在、该部门 4 名员工、新增、重名拒绝、空名拒绝、改名级联（4 条员工同步、旧名 0 残留）、有员工拒删、空部门可删、改回复原 |
 | 考勤 → 薪资联动 | ✅ 考勤状态由打卡时间推导（9:00/18:00 为界）；薪资生成扣款与考勤一致（缺勤 1 天 + 迟到 2 + 早退 1 → 扣 418.62，全勤为 0）；`recalculate` 可把补录的考勤补算进待发放记录 |
 | 停用部门 | ✅ 分配员工返回「部门已停用，不能分配员工」 |
+| 薪资标准（生效日期） | ✅ 张伟 18500→20000 后：补生成 2026-09 用 `base=18500`，生成 2026-12 用 `base=20000`；同月再调薪标准仍只 1 条；新员工写入职日标准 |
+| 薪资重算 | ✅ 补录缺勤后 `recalculate` 使张伟扣款变为 850.57（18500÷21.75）；对已发放的 2026-10 返回 `generated=0, skipped=6`，未改动 |
+| 考勤日期校验 | ✅ 未来日期 2027-06-01 被拒（`考勤日期不能晚于今天`），当天正常通过 |
+| 单页界面 | ✅ 浏览器实操：登录、员工增删改、部门「查看员工」、考勤月度汇总、薪资生成与重算、审计列表均正常；XSS 载荷 `<img onerror>` 原样显示为文本 |
+| 响应耗时 | ✅ 查询 11–68 ms（首次含预编译）、写操作 60–96 ms；连续 60 次查询 0 失败，并发 10 请求全 200 |
 
 ### 5.6 事务失效三场景实验
 
@@ -658,7 +672,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
 - [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 80 条，实际结果均为实测
-- [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 29 条，另列 4 项未做到
+- [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 31 条，另列 7 项未做到
 - [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
 - [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
 
@@ -764,7 +778,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/api.md](docs/api.md) | 36 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，21 条路径 36 个操作，可导入 ApiFox / Postman 生成接口树 |
 | [docs/test-cases.md](docs/test-cases.md) | 80 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
-| [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
+| [docs/engineering-checklist.md](docs/engineering-checklist.md) | 31 条开发规范逐条对照，附「未做到的部分」7 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 
 ---
