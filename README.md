@@ -807,6 +807,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-24 | 打通「考勤 → 薪资」：考勤状态改由打卡时间推导（客户端传值忽略），薪资生成时按缺勤/迟到/早退计算扣款，规则集中在 `SalaryRule`；停用部门不再允许分配员工；种子数据与推导规则对齐 |
 | 2026-11-24 | 新增 `POST /salaries/recalculate`：补录考勤后可重算待发放记录，已发放跳过；文档总校——`api.md` 补 4 章 19 个接口，`openapi.yaml` 扩到 21 路径 36 操作，`test-cases.md` 扩到 77 条（9 组），README 计数与交付文档描述同步 |
 | 2026-11-24 | 新增权限模型：`role` / `permission` / `user_role` / `role_permission` 四表，`@RequirePermission` + `PermissionAspect` 实现接口级鉴权（403）；内置 ADMIN/HR/VIEWER 三角色，权限实时生效；界面按 `/me` 收敛导航与写按钮；接口 48、用例 90 |
+| 2026-11-24 | 界面补批量删除：员工表加勾选列与全选，按钮显示选中数量；后端 `DELETE /emps` 早已支持数组，界面此前只有单条删除，「批量处理」只能靠接口调用 |
 | 2026-11-24 | 端点去重与授权入口：删除与 `GET /users/{id}/roles` 重复的 `GET /roles/users/{id}`（48→47）；账号页新增「角色」按钮，可勾选分配角色（复用既有接口，不新增端点） |
 | 2026-11-24 | 修复删除账号撞外键：`user_role` 对 `sys_user` 有外键，直接删账号会抛 `DataIntegrityViolationException`（表现为「系统繁忙」）；改为同事务内先清角色关联；并补该异常的全局处理，提示「数据被其他记录引用或违反约束」 |
 | 2026-11-24 | 新增 `salary_standard` 薪资标准表（按生效日期留存调薪历史）：生成薪资改取当月适用标准，修复「补生成历史月份用当前薪资」；员工表单部门改下拉、登记考勤日期默认今天、考勤变动后提示重算；用例补至 80 条 |
