@@ -2,6 +2,7 @@ package com.lab.emp.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -77,6 +78,19 @@ public class GlobalExceptionHandler {
         log.warn("不支持的请求方法：{}", e.getMethod());
         return Result.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
                 "不支持的请求方法：" + e.getMethod());
+    }
+
+    /**
+     * 违反数据库完整性约束（外键、CHECK、非空等）。
+     *
+     * <p>这类异常几乎都发生在「删除被引用的数据」或「写入不满足约束的值」时。
+     * 不单独处理会落到兜底分支变成「系统繁忙」——用户不知道是自己触发了约束，
+     * 还是服务真的挂了。日志里保留具体约束名，便于定位。
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public Result<Void> handleIntegrity(DataIntegrityViolationException e) {
+        log.warn("数据完整性冲突：{}", e.getMostSpecificCause().getMessage());
+        return Result.fail("数据被其他记录引用或违反约束，操作已取消");
     }
 
     /**

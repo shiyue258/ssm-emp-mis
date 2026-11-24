@@ -7,7 +7,9 @@ import com.lab.emp.common.PasswordEncoder;
 import com.lab.emp.dto.UserCreateDTO;
 import com.lab.emp.dto.UserUpdateDTO;
 import com.lab.emp.entity.SysUser;
+import com.lab.emp.entity.UserRole;
 import com.lab.emp.mapper.SysUserMapper;
+import com.lab.emp.mapper.UserRoleMapper;
 import com.lab.emp.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,9 +34,11 @@ public class UserServiceImpl implements UserService {
     private static final int MAX_SIZE = 100;
 
     private final SysUserMapper sysUserMapper;
+    private final UserRoleMapper userRoleMapper;
 
-    public UserServiceImpl(SysUserMapper sysUserMapper) {
+    public UserServiceImpl(SysUserMapper sysUserMapper, UserRoleMapper userRoleMapper) {
         this.sysUserMapper = sysUserMapper;
+        this.userRoleMapper = userRoleMapper;
     }
 
     @Override
@@ -112,6 +116,9 @@ public class UserServiceImpl implements UserService {
         if (remaining == null || remaining == 0) {
             throw new BusinessException("这是最后一个启用状态的账号，不能删除");
         }
+        // 先清掉角色关联：user_role 对 sys_user 有外键，直接删账号会撞
+        // DataIntegrityViolationException（表现为「系统繁忙」）。同一事务内先后执行。
+        userRoleMapper.delete(new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
         sysUserMapper.deleteById(userId);
     }
 
