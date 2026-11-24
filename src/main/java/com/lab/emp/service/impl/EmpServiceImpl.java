@@ -7,13 +7,16 @@ import com.lab.emp.common.BusinessException;
 import com.lab.emp.dto.EmpQueryDTO;
 import com.lab.emp.entity.Dept;
 import com.lab.emp.entity.Emp;
+import com.lab.emp.entity.SalaryStandard;
 import com.lab.emp.mapper.DeptMapper;
 import com.lab.emp.mapper.EmpMapper;
+import com.lab.emp.mapper.SalaryStandardMapper;
 import com.lab.emp.service.EmpService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +42,7 @@ public class EmpServiceImpl implements EmpService {
 
     private final EmpMapper empMapper;
     private final DeptMapper deptMapper;
+    private final SalaryStandardMapper salaryStandardMapper;
 
     /**
      * 允许排序的字段白名单。
@@ -61,9 +65,11 @@ public class EmpServiceImpl implements EmpService {
     }
 
     /** 构造器注入：单一构造器时无需 @Autowired，也便于单元测试直接 new。 */
-    public EmpServiceImpl(EmpMapper empMapper, DeptMapper deptMapper) {
+    public EmpServiceImpl(EmpMapper empMapper, DeptMapper deptMapper,
+                          SalaryStandardMapper salaryStandardMapper) {
         this.empMapper = empMapper;
         this.deptMapper = deptMapper;
+        this.salaryStandardMapper = salaryStandardMapper;
     }
 
     @Override
@@ -109,7 +115,13 @@ public class EmpServiceImpl implements EmpService {
         // 新增时 ID 由数据库自增，前端传入的 empId 一律忽略，避免覆盖既有记录
         emp.setEmpId(null);
         requireDeptExists(emp.getDept());
-        return empMapper.insert(emp) > 0;
+        boolean inserted = empMapper.insert(emp) > 0;
+        if (inserted) {
+            // 初始薪资标准：生效日取入职日，保证之后补生成任意月份都能查到基准
+            writeStandard(emp.getEmpId(), emp.getSalary(),
+                    emp.getHireDate() == null ? LocalDate.now() : emp.getHireDate());
+        }
+        return inserted;
     }
 
     @Override
@@ -120,11 +132,16 @@ public class EmpServiceImpl implements EmpService {
         }
         requireId(emp.getEmpId());
         requireDeptExists(emp.getDept());
+        Emp existing = empMapper.selectById(emp.getEmpId());
+        if (existing == null) {
+            throw new BusinessException("员工不存在或已删除：" + emp.getEmpId());
+        }
         int rows = empMapper.updateById(emp);
         if (rows == 0) {
             // 影响 0 行只有两种可能：ID 不存在，或该记录已被逻辑删除
             throw new BusinessException("员工不存在或已删除：" + emp.getEmpId());
         }
+        upsertSalaryStandard(existing, emp);
         return true;
     }
 
@@ -137,6 +154,39 @@ public class EmpServiceImpl implements EmpService {
             throw new BusinessException("员工不存在或已删除：" + empId);
         }
         return true;
+    }
+
+    /**
+     * 员工改薪时补一条薪资标准，生效日取**当月 1 日**。
+     *
+     * <p>为什么不是「今天」：薪资按月核算，月中改薪若按天切分，需要按日折算，
+     * 那套规则本工程没有实现；取当月 1 日意味着「本月起按新标准」，
+     * 语义简单且不会在月内产生两套基准。
+     *
+     * <p>同月重复调薪时先删后插（唯一键是 {@code emp_id + effective_from}），
+     * 避免一次调薪留下两条同日标准。
+     */
+    private void upsertSalaryStandard(Emp existing, Emp incoming) {
+        if (incoming.getSalary() == null || existing.getSalary() == null
+                || incoming.getSalary().compareTo(existing.getSalary()) == 0) {
+            return;
+        }
+        LocalDate effective = LocalDate.now().withDayOfMonth(1);
+        salaryStandardMapper.delete(new LambdaQueryWrapper<SalaryStandard>()
+                .eq(SalaryStandard::getEmpId, existing.getEmpId())
+                .eq(SalaryStandard::getEffectiveFrom, effective));
+        writeStandard(existing.getEmpId(), incoming.getSalary(), effective);
+    }
+
+    private void writeStandard(Integer empId, java.math.BigDecimal base, LocalDate effectiveFrom) {
+        if (empId == null || base == null) {
+            return;
+        }
+        SalaryStandard std = new SalaryStandard();
+        std.setEmpId(empId);
+        std.setBase(base);
+        std.setEffectiveFrom(effectiveFrom);
+        salaryStandardMapper.insert(std);
     }
 
     /**

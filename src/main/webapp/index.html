@@ -265,8 +265,9 @@
     .toolbar .field input,.toolbar .field select{width:100%;min-width:0}
     .divider-v{display:none}
     .row2{grid-template-columns:1fr}
-    /* 窄屏时主操作单独占一行，避免被挤到角落 */
+    /* 窄屏时主操作与次操作各占一行，避免按钮被挤出卡片边缘 */
     #content .toolbar > .btn-primary{flex:1 1 100%;justify-content:center;order:9}
+    #sRecalc{flex:1 1 100%;order:9}
   }
 </style>
 </head>
@@ -452,6 +453,8 @@ function confirmDialog(message, okText) {
 /* ===================== 一、员工 ===================== */
 VIEWS.emp = async function () {
   const st = { page: 1, size: 10, name: '', dept: '', sortBy: 'empId', sortDir: 'desc' };
+  let deptCache = [];
+  await loadDepts();
   $('#content').innerHTML = `
     <div class="card">
       <div class="toolbar">
@@ -504,13 +507,29 @@ VIEWS.emp = async function () {
     } catch (e) { $('#tableBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
 
+  // 部门改为下拉：自由输入时只能靠后端报「部门不存在」，改一次要重填整张表
+  async function loadDepts() {
+    try { deptCache = await api('/depts'); } catch (e) { deptCache = []; }
+  }
+  function deptSelect(current) {
+    const enabled = deptCache.filter(d => d.status === 1);
+    const inList = enabled.some(d => d.deptName === current);
+    const opts = enabled.map(d =>
+      `<option value="${esc(d.deptName)}" ${d.deptName === current ? 'selected' : ''}>${esc(d.deptName)}</option>`).join('');
+    // 编辑一条所属部门已停用（或已删除）的记录时，保留原值，避免保存后被强行改掉
+    const keepOld = current && !inList
+      ? `<option value="${esc(current)}" selected>${esc(current)}（已停用）</option>` : '';
+    const placeholder = current ? '' : '<option value="" disabled selected>请选择部门</option>';
+    return `<select name="dept" required>${placeholder}${keepOld}${opts}</select>`;
+  }
+
   function empForm(r = {}) {
     return `
       <div class="field"><label>姓名 *</label><input name="empName" value="${esc(r.empName || '')}" required></div>
       <div class="row2">
         <div class="field"><label>性别 *</label>
           <select name="gender"><option ${r.gender === '男' ? 'selected' : ''}>男</option><option ${r.gender === '女' ? 'selected' : ''}>女</option></select></div>
-        <div class="field"><label>部门 *</label><input name="dept" value="${esc(r.dept || '')}" placeholder="须已存在" required></div>
+        <div class="field"><label>部门 *</label>${deptSelect(r.dept)}</div>
       </div>
       <div class="row2">
         <div class="field"><label>岗位</label><input name="post" value="${esc(r.post || '')}"></div>
@@ -697,23 +716,29 @@ VIEWS.att = async function () {
       $('#aBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
         const r = p.records.find(x => String(x.attId) === b.dataset.edit);
         openDialog('编辑考勤', attForm(r), async (fd) => {
-          await api('/attendance', { method: 'PUT', body: { attId: r.attId, ...payload(fd) } });
-          toast('已保存'); load();
+          const body = payload(fd);
+          await api('/attendance', { method: 'PUT', body: { attId: r.attId, ...body } });
+          toast('已保存'); hintRecalc(body.workDate); load();
         });
       });
       $('#aBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
         if (!await confirmDialog('删除该考勤记录？', '删除')) return;
-        try { await api('/attendance/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
-        catch (e) { toast(e.message, true); }
+        const rec = p.records.find(x => String(x.attId) === b.dataset.del);
+        try {
+          await api('/attendance/' + b.dataset.del, { method: 'DELETE' });
+          toast('已删除'); hintRecalc(rec && rec.workDate); load();
+        } catch (e) { toast(e.message, true); }
       });
     } catch (e) { $('#aBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
 
   function attForm(r = {}) {
+    // 日期默认今天：绝大多数登记都是当天的卡，留空逼用户手填反而增加出错机会
+    const today = new Date().toISOString().slice(0, 10);
     return `
       <div class="row2">
         <div class="field"><label>员工 ID *</label><input name="empId" type="number" value="${r.empId ?? ''}" required></div>
-        <div class="field"><label>日期 *</label><input name="workDate" type="date" value="${esc(r.workDate || '')}" required></div>
+        <div class="field"><label>日期 *</label><input name="workDate" type="date" value="${esc(r.workDate || today)}" required></div>
       </div>
       <div class="row2">
         <div class="field"><label>上班</label><input name="checkIn" type="time" value="${(r.checkIn || '').slice(0, 5)}"></div>
@@ -736,9 +761,25 @@ VIEWS.att = async function () {
     st.month = $('#aMonth').value;
     st.page = 1; load();
   };
+  /**
+   * 考勤变动后提醒：若该月薪资已生成，需手动重算才会反映。
+   * 不做自动重算——薪资是被核对的凭证，静默改数字比漏算更危险。
+   */
+  async function hintRecalc(workDate) {
+    const month = String(workDate || '').slice(0, 7);
+    if (!month) return;
+    try {
+      const p = await api('/salaries?month=' + encodeURIComponent(month) + '&size=1');
+      if (p && p.total > 0) {
+        toast('该月薪资已生成，请到「薪资」页点「重算本月」同步扣款');
+      }
+    } catch (e) { /* 提示失败不影响主流程 */ }
+  }
+
   $('#aAdd').onclick = () => openDialog('登记考勤', attForm(), async (fd) => {
-    await api('/attendance', { method: 'POST', body: payload(fd) });
-    toast('已登记'); load();
+    const body = payload(fd);
+    await api('/attendance', { method: 'POST', body });
+    toast('已登记'); hintRecalc(body.workDate); load();
   });
   $('#aSum').onclick = async () => {
     const m = $('#aMonth').value || st.month;

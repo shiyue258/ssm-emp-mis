@@ -8,9 +8,11 @@ import com.lab.emp.dto.SalaryGenerateResult;
 import com.lab.emp.entity.Attendance;
 import com.lab.emp.entity.Emp;
 import com.lab.emp.entity.SalaryRecord;
+import com.lab.emp.entity.SalaryStandard;
 import com.lab.emp.mapper.AttendanceMapper;
 import com.lab.emp.mapper.EmpMapper;
 import com.lab.emp.mapper.SalaryRecordMapper;
+import com.lab.emp.mapper.SalaryStandardMapper;
 import com.lab.emp.service.SalaryService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,12 +54,15 @@ public class SalaryServiceImpl implements SalaryService {
     private final SalaryRecordMapper salaryRecordMapper;
     private final EmpMapper empMapper;
     private final AttendanceMapper attendanceMapper;
+    private final SalaryStandardMapper salaryStandardMapper;
 
     public SalaryServiceImpl(SalaryRecordMapper salaryRecordMapper, EmpMapper empMapper,
-                             AttendanceMapper attendanceMapper) {
+                             AttendanceMapper attendanceMapper,
+                             SalaryStandardMapper salaryStandardMapper) {
         this.salaryRecordMapper = salaryRecordMapper;
         this.empMapper = empMapper;
         this.attendanceMapper = attendanceMapper;
+        this.salaryStandardMapper = salaryStandardMapper;
     }
 
     @Override
@@ -121,6 +126,10 @@ public class SalaryServiceImpl implements SalaryService {
         // 而是先根据考勤事实算扣款，再得出实发。
         Map<Integer, int[]> attendanceStats = loadAttendanceStats(ym);
 
+        // 按生效日期取每人当月适用的基本工资——不能用 emp.salary，
+        // 那是「当前」值，用它补生成历史月份会把调薪后的数额算进去。
+        Map<Integer, BigDecimal> baseByEmp = loadBaseByMonth(ym, emps);
+
         int generated = 0;
         int skipped = 0;
         BigDecimal deductedTotal = BigDecimal.ZERO;
@@ -129,7 +138,7 @@ public class SalaryServiceImpl implements SalaryService {
                 skipped++;
                 continue;
             }
-            BigDecimal base = scale(emp.getSalary());
+            BigDecimal base = scale(baseByEmp.getOrDefault(emp.getEmpId(), emp.getSalary()));
             int[] stats = attendanceStats.getOrDefault(emp.getEmpId(), new int[3]);
             BigDecimal deduction = SalaryRule.deductionOf(base, stats[0], stats[1], stats[2]);
             // 扣款不得超过应发：否则会出现负数工资，表上的 CHECK 也会拒绝
@@ -206,6 +215,33 @@ public class SalaryServiceImpl implements SalaryService {
         result.setSkipped(skipped);
         result.setDeductedTotal(deductedTotal);
         return result;
+    }
+
+    /**
+     * 取每人在某月适用的基本工资。
+     *
+     * <p>规则：在 {@code salary_standard} 里筛「生效日期不晚于该月最后一天」的记录，
+     * 按生效日期升序遍历、后者覆盖前者，得到每人的最新标准。
+     * 没有标准记录（例如历史数据缺失）时由调用方回退到 {@code emp.salary}。
+     *
+     * <p>一条查询取全部，而非每人查一次——员工多时后者就是 N+1。
+     */
+    private Map<Integer, BigDecimal> loadBaseByMonth(YearMonth ym, List<Emp> emps) {
+        if (emps.isEmpty()) {
+            return new HashMap<>();
+        }
+        List<Integer> empIds = emps.stream().map(Emp::getEmpId).collect(Collectors.toList());
+        List<SalaryStandard> standards = salaryStandardMapper.selectList(
+                new LambdaQueryWrapper<SalaryStandard>()
+                        .in(SalaryStandard::getEmpId, empIds)
+                        .le(SalaryStandard::getEffectiveFrom, ym.atEndOfMonth())
+                        .orderByAsc(SalaryStandard::getEffectiveFrom));
+
+        Map<Integer, BigDecimal> baseByEmp = new HashMap<>(empIds.size() * 2);
+        for (SalaryStandard std : standards) {
+            baseByEmp.put(std.getEmpId(), std.getBase());
+        }
+        return baseByEmp;
     }
 
     /**

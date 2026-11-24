@@ -17,7 +17,8 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
-| 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、78 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
+| 表数量 | 6 张：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard`（另有审计表 `op_log`） |
+| 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、80 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -36,6 +37,7 @@
   - [4.3 登录用户表](#43-登录用户表ssm_empsys_user)
   - [4.4 部门表](#44-部门表ssm_empdept)
   - [4.5 考勤如何影响薪资](#45-考勤如何影响薪资)
+  - [4.6 薪资标准：为什么不能直接用 emp.salary](#46-薪资标准为什么不能直接用-empsalary)
 - [五、构建与运行](#五构建与运行)
   - [5.2 初始化数据库与构建](#52-初始化数据库与构建)
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
@@ -408,6 +410,44 @@ CREATE TABLE dept (
 
 规则集中在 `common/SalaryRule` 一处，因为散落的魔法数字（21.75、20）过两个月没人说得清依据。**这不等于真实薪酬方案**——真实场景还有社保公积金、个税累进、加班费折算，本系统一概没有；实现的是「考勤影响薪资」这条链路本身。
 
+### 4.6 薪资标准：为什么不能直接用 `emp.salary`
+
+`emp.salary` 只保存**当前**薪资。若拿它补生成历史月份，调过薪的人历史账目会用新数额——例如 11 月把张伟从 18500 调到 20000，再补生成 9 月，就会按 20000 算，多出 1500。薪资恰恰是最不能事后改的东西。
+
+因此单列 `salary_standard`：
+
+```sql
+CREATE TABLE salary_standard (
+    std_id         INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+    emp_id         INT UNSIGNED   NOT NULL,
+    base           DECIMAL(10, 2) NOT NULL,
+    effective_from DATE           NOT NULL,   -- 生效日期（含）
+    create_time    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (std_id),
+    UNIQUE KEY uk_std_emp_effective (emp_id, effective_from)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+```
+
+**写入时机**（由 `EmpServiceImpl` 自动处理，不开放独立接口）：
+
+| 场景 | 生效日 |
+| :--- | :--- |
+| 新增员工 | 入职日期 |
+| 修改薪资 | **当月 1 日**（同月重复调薪覆盖，不留两条） |
+
+**读取规则**（`SalaryServiceImpl#loadBaseByMonth`）：取 `effective_from <= 该月最后一天` 的最后一条；查不到时回退 `emp.salary`。
+
+实测对照：
+
+```
+张伟 18500（标准 2021-03-15 生效）
+11-24 调薪到 20000  →  新增标准 2026-11-01 = 20000
+补生成 2026-09      →  base=18500（用当时的标准）
+生成 2026-12        →  base=20000
+```
+
+为什么生效日取「当月 1 日」而不是「今天」：薪资按月核算，月中改薪需要按日折算，那套规则本工程未实现；取 1 日意味着「本月起按新标准」，语义简单且不会在月内出现两套基准。
+
 ---
 
 ## 五、构建与运行
@@ -617,7 +657,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
-- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 78 条，实际结果均为实测
+- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 80 条，实际结果均为实测
 - [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 29 条，另列 4 项未做到
 - [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
 - [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
@@ -712,6 +752,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-24 | 修复三处衔接与协议问题：员工写入校验部门是否存在于 `dept` 表；考勤/薪资列表补 `empName`（批量回填）；缺参数与不支持的 Content-Type 分别返回 400/415，并发唯一键冲突提示「请勿重复提交」 |
 | 2026-11-24 | 打通「考勤 → 薪资」：考勤状态改由打卡时间推导（客户端传值忽略），薪资生成时按缺勤/迟到/早退计算扣款，规则集中在 `SalaryRule`；停用部门不再允许分配员工；种子数据与推导规则对齐 |
 | 2026-11-24 | 新增 `POST /salaries/recalculate`：补录考勤后可重算待发放记录，已发放跳过；文档总校——`api.md` 补 4 章 19 个接口，`openapi.yaml` 扩到 21 路径 36 操作，`test-cases.md` 扩到 77 条（9 组），README 计数与交付文档描述同步 |
+| 2026-11-24 | 新增 `salary_standard` 薪资标准表（按生效日期留存调薪历史）：生成薪资改取当月适用标准，修复「补生成历史月份用当前薪资」；员工表单部门改下拉、登记考勤日期默认今天、考勤变动后提示重算；用例补至 80 条 |
 
 ---
 
@@ -722,7 +763,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
 | [docs/api.md](docs/api.md) | 36 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，21 条路径 36 个操作，可导入 ApiFox / Postman 生成接口树 |
-| [docs/test-cases.md](docs/test-cases.md) | 78 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
+| [docs/test-cases.md](docs/test-cases.md) | 80 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 

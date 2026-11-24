@@ -243,3 +243,33 @@ SELECT emp_id, '2026-10', salary, 500.00, 0.00, salary + 500.00, 1,
        '2026-11-01 00:00:00', '2026-11-01 00:00:00'
 FROM emp
 WHERE deleted = 0 AND emp_id <= 6;
+
+-- ----------------------------------------------------------------------------
+-- salary_standard 薪资标准（带生效日期）
+--   为什么需要这张表：emp.salary 只保留「当前」薪资，若拿它去补生成历史月份，
+--   调过薪的人历史账目会用新数额，属实质性错误。标准表按 (emp_id, effective_from)
+--   记录每次调薪，生成薪资时取「生效日期不晚于该月末」的最后一条。
+--   同一天只允许一条（唯一键），重复调薪按覆盖处理。
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS salary_standard;
+
+CREATE TABLE salary_standard (
+    std_id         INT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '标准ID',
+    emp_id         INT UNSIGNED   NOT NULL                COMMENT '员工ID',
+    base           DECIMAL(10, 2) NOT NULL                COMMENT '该生效日起的基本工资',
+    effective_from DATE           NOT NULL                COMMENT '生效日期（含）',
+    create_time    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+    PRIMARY KEY (std_id),
+    UNIQUE KEY uk_std_emp_effective (emp_id, effective_from),
+    KEY idx_std_emp (emp_id),
+    CONSTRAINT chk_std_base CHECK (base >= 0)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '薪资标准表（按生效日期留存历史）';
+
+-- 种子：每个在职员工的初始标准，生效日取其入职日
+INSERT INTO salary_standard (emp_id, base, effective_from, create_time)
+SELECT emp_id, salary, hire_date, '2026-01-01 00:00:00'
+FROM emp
+WHERE deleted = 0;
