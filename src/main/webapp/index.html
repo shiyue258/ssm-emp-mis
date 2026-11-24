@@ -982,6 +982,7 @@ VIEWS.user = async function () {
           <td class="actions">
             <button class="btn btn-sm" data-edit="${u.userId}">改名 / 启停</button>
             <button class="btn btn-sm" data-pwd="${u.userId}">重置口令</button>
+            ${can('role:write') ? `<button class="btn btn-sm" data-roles="${u.userId}">角色</button>` : ''}
             <button class="btn btn-sm btn-danger" data-del="${u.userId}">删除</button>
           </td></tr>`).join('')}
         </tbody></table></div>`;
@@ -1017,6 +1018,27 @@ VIEWS.user = async function () {
         if (!await confirmDialog('删除该账号？', '删除')) return;
         try { await api('/users/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
         catch (e) { toast(e.message, true); }
+      });
+      $('#uBox').querySelectorAll('[data-roles]').forEach(b => b.onclick = async () => {
+        const u = p.records.find(x => String(x.userId) === b.dataset.roles);
+        try {
+          const [roles, owned] = await Promise.all([
+            api('/roles'),
+            api('/users/' + u.userId + '/roles')
+          ]);
+          const set = new Set(owned);
+          const body = `<p class="hint">勾选后立即生效，无需该账号重新登录。</p>` +
+            roles.map(r => `
+              <label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px">
+                <input type="checkbox" name="role" value="${r.roleId}" ${set.has(r.roleId) ? 'checked' : ''}>
+                ${esc(r.roleName)} <span style="color:var(--text-3);font-size:12px">${esc(r.roleCode)}</span>
+              </label>`).join('');
+          openDialog('分配角色 · ' + u.username, body, async (fd, dlg) => {
+            const ids = [...dlg.querySelectorAll('input[name="role"]:checked')].map(x => Number(x.value));
+            await api('/users/' + u.userId + '/roles', { method: 'PUT', body: ids });
+            toast('已保存，该账号权限立即生效');
+          }, '保存角色');
+        } catch (e) { toast(e.message, true); }
       });
     } catch (e) { $('#uBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }

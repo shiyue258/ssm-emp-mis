@@ -15,9 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.validation.Valid;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 角色与授权接口。
@@ -91,16 +89,5 @@ public class RoleController {
                                           @RequestBody List<Integer> permIds) {
         roleService.assignPermissions(id, permIds);
         return Result.ok();
-    }
-
-    /** 某账号的角色，便于一次性查看。 */
-    @GetMapping("/users/{id}")
-    @RequirePermission("role:write")
-    public Result<Map<String, Object>> rolesOfUser(@PathVariable("id") Integer id) {
-        // 不用 Map.of：它是 JDK 9 API，会让 mvn -Pjdk8-lint 复核失败
-        Map<String, Object> data = new LinkedHashMap<>(4);
-        data.put("userId", id);
-        data.put("roleIds", roleService.roleIdsOf(id));
-        return Result.ok(data);
     }
 }

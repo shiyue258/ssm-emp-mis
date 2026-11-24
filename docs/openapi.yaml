@@ -1039,32 +1039,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /roles/users/{id}:
-    get:
-      tags: [权限管理]
-      summary: 某账号的角色
-      parameters:
-        - $ref: '#/components/parameters/UserId'
-      responses:
-        '200':
-          description: 返回 userId 与 roleIds
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Result'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          userId: { type: integer }
-                          roleIds:
-                            type: array
-                            items: { type: integer }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
   /users/{id}/roles:
     get:
       tags: [权限管理]

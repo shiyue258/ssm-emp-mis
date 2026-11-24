@@ -18,7 +18,7 @@
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.3.0`：相对 `v1.2.0` 新增薪资标准表（按生效日期）、薪资重算与界面优化 |
 | 表数量 | 10 张：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard` / `role` / `permission` / `user_role` / `role_permission`（另有审计表 `op_log`，共 11 张） |
-| 状态 | ✅ **已完成**：48 个接口（健康 2 / 认证 2 + 当前用户 1 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 8 / 角色与权限 9 / 审计 1）、91 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
+| 状态 | ✅ **已完成**：47 个接口（健康 2 / 认证 2 + 当前用户 1 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 8 / 角色与权限 8 / 审计 1）、91 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -196,9 +196,8 @@
 | 41 | GET | `/roles/permissions` | 全部权限点（供勾选） | ✅ 已实现 |
 | 42 | GET | `/roles/{id}/permissions` | 角色已分配权限 | ✅ 已实现 |
 | 43 | PUT | `/roles/{id}/permissions` | 覆盖式分配权限 | ✅ 已实现 |
-| 44 | GET | `/roles/users/{id}` | 某账号的角色 | ✅ 已实现 |
-| 45 | GET | `/users/{id}/roles` | 某账号的角色 ID 列表 | ✅ 已实现 |
-| 46 | PUT | `/users/{id}/roles` | 覆盖式分配角色（最后管理员受保护） | ✅ 已实现 |
+| 44 | GET | `/users/{id}/roles` | 某账号的角色 ID 列表 | ✅ 已实现 |
+| 45 | PUT | `/users/{id}/roles` | 覆盖式分配角色（最后管理员受保护） | ✅ 已实现 |
 
 > 第 7、8 条是指导书「登录权限拦截」的配套实现——没有登录入口就无法演示 401，故单列。
 >
@@ -808,6 +807,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-24 | 打通「考勤 → 薪资」：考勤状态改由打卡时间推导（客户端传值忽略），薪资生成时按缺勤/迟到/早退计算扣款，规则集中在 `SalaryRule`；停用部门不再允许分配员工；种子数据与推导规则对齐 |
 | 2026-11-24 | 新增 `POST /salaries/recalculate`：补录考勤后可重算待发放记录，已发放跳过；文档总校——`api.md` 补 4 章 19 个接口，`openapi.yaml` 扩到 21 路径 36 操作，`test-cases.md` 扩到 77 条（9 组），README 计数与交付文档描述同步 |
 | 2026-11-24 | 新增权限模型：`role` / `permission` / `user_role` / `role_permission` 四表，`@RequirePermission` + `PermissionAspect` 实现接口级鉴权（403）；内置 ADMIN/HR/VIEWER 三角色，权限实时生效；界面按 `/me` 收敛导航与写按钮；接口 48、用例 90 |
+| 2026-11-24 | 端点去重与授权入口：删除与 `GET /users/{id}/roles` 重复的 `GET /roles/users/{id}`（48→47）；账号页新增「角色」按钮，可勾选分配角色（复用既有接口，不新增端点） |
 | 2026-11-24 | 修复删除账号撞外键：`user_role` 对 `sys_user` 有外键，直接删账号会抛 `DataIntegrityViolationException`（表现为「系统繁忙」）；改为同事务内先清角色关联；并补该异常的全局处理，提示「数据被其他记录引用或违反约束」 |
 | 2026-11-24 | 新增 `salary_standard` 薪资标准表（按生效日期留存调薪历史）：生成薪资改取当月适用标准，修复「补生成历史月份用当前薪资」；员工表单部门改下拉、登记考勤日期默认今天、考勤变动后提示重算；用例补至 80 条 |
 
@@ -818,7 +818,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 文档 | 内容 |
 | :--- | :--- |
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
-| [docs/api.md](docs/api.md) | 48 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
+| [docs/api.md](docs/api.md) | 47 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，21 条路径 36 个操作，可导入 ApiFox / Postman 生成接口树 |
 | [docs/test-cases.md](docs/test-cases.md) | 91 条接口用例（10 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 31 条开发规范逐条对照，附「未做到的部分」7 项 |
