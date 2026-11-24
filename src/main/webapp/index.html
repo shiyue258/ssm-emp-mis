@@ -161,6 +161,13 @@
   .toolbar .spacer{flex:1 1 12px}
   .divider-v{width:1px;align-self:stretch;background:var(--stroke);margin:2px 2px}
 
+  /* 窄屏下按页面隐藏次要列，避免把「状态」这种关键列挤出视野。
+     列序：薪资表 1 ID / 2 员工 / 3 月份 / 4 基本 / 5 奖金 / 6 扣款 / 7 实发 / 8 状态 / 9 操作 */
+  @media (max-width: 860px){
+    .t-sal th:nth-child(3), .t-sal td:nth-child(3),
+    .t-sal th:nth-child(4), .t-sal td:nth-child(4) { display:none }
+  }
+
   /* ---------- 表格 ---------- */
   .table-wrap{
     overflow:auto;border:1px solid var(--stroke);border-radius:var(--radius);
@@ -418,6 +425,30 @@ function openDialog(title, bodyHtml, onOk, okText) {
   dlg.showModal();
 }
 
+/* 自定义确认框：替代原生 confirm()。
+   原生对话框样式无法定制、会阻塞渲染线程，与整体风格也割裂；
+   这里用 <dialog> 实现，返回 Promise<boolean>，调用方 await 即可。 */
+function confirmDialog(message, okText) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.innerHTML = `
+      <form method="dialog">
+        <div class="dlg-head">确认操作</div>
+        <div class="dlg-body"><p style="margin:2px 0 14px;color:var(--text-2);line-height:1.6">${esc(message)}</p></div>
+        <div class="dlg-foot">
+          <button class="btn" value="cancel">取消</button>
+          <button class="btn btn-primary" value="ok">${esc(okText || '确定')}</button>
+        </div>
+      </form>`;
+    document.body.appendChild(dlg);
+    dlg.addEventListener('close', () => {
+      resolve(dlg.returnValue === 'ok');
+      dlg.remove();
+    });
+    dlg.showModal();
+  });
+}
+
 /* ===================== 一、员工 ===================== */
 VIEWS.emp = async function () {
   const st = { page: 1, size: 10, name: '', dept: '', sortBy: 'empId', sortDir: 'desc' };
@@ -509,7 +540,7 @@ VIEWS.emp = async function () {
       });
     });
     $('#tableBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-      if (!confirm('删除员工 #' + b.dataset.del + '？该操作为逻辑删除，历史考勤与薪资保留。')) return;
+      if (!await confirmDialog('删除员工 #' + b.dataset.del + '？该操作为逻辑删除，历史考勤与薪资保留。', '删除')) return;
       try { await api('/emps/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
       catch (e) { toast(e.message, true); }
     });
@@ -583,7 +614,7 @@ VIEWS.dept = async function () {
         });
       });
       $('#dBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-        if (!confirm('删除该部门？部门下仍有员工时会被拒绝。')) return;
+        if (!await confirmDialog('删除该部门？部门下仍有员工时会被拒绝。', '删除')) return;
         try { await api('/depts/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
         catch (e) { toast(e.message, true); }
       });
@@ -671,7 +702,7 @@ VIEWS.att = async function () {
         });
       });
       $('#aBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-        if (!confirm('删除该考勤记录？')) return;
+        if (!await confirmDialog('删除该考勤记录？', '删除')) return;
         try { await api('/attendance/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
         catch (e) { toast(e.message, true); }
       });
@@ -759,7 +790,7 @@ VIEWS.sal = async function () {
       const p = await api('/salaries?' + q);
       const pg = pageOf(p);
       $('#sBox').innerHTML = p.records.length ? `
-        <div class="table-wrap"><table><thead><tr>
+        <div class="table-wrap"><table class="t-sal"><thead><tr>
           <th>ID</th><th>员工</th><th>月份</th><th>基本</th><th>奖金</th><th>扣款</th><th>实发</th><th>状态</th><th>操作</th>
         </tr></thead><tbody>
         ${p.records.map(r => `<tr>
@@ -799,12 +830,12 @@ VIEWS.sal = async function () {
           });
       });
       $('#sBox').querySelectorAll('[data-pay]').forEach(b => b.onclick = async () => {
-        if (!confirm('确认发放？发放后不可修改、不可删除。')) return;
+        if (!await confirmDialog('确认发放？发放后不可修改、不可删除。', '确认发放')) return;
         try { await api('/salaries/' + b.dataset.pay + '/pay', { method: 'PUT' }); toast('已发放'); load(); }
         catch (e) { toast(e.message, true); }
       });
       $('#sBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-        if (!confirm('删除该待发放记录？')) return;
+        if (!await confirmDialog('删除该待发放记录？', '删除')) return;
         try { await api('/salaries/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
         catch (e) { toast(e.message, true); }
       });
@@ -829,7 +860,7 @@ VIEWS.sal = async function () {
   $('#sRecalc').onclick = async () => {
     const m = $('#sMonth').value;
     if (!m) { toast('请先选择月份', true); return; }
-    if (!confirm('按当前考勤重算待发放记录？手工调整过的扣款会被覆盖，已发放的不受影响。')) return;
+    if (!await confirmDialog('按当前考勤重算待发放记录？手工调整过的扣款会被覆盖，已发放的不受影响。', '重算')) return;
     try {
       const r = await api('/salaries/recalculate?month=' + encodeURIComponent(m), { method: 'POST' });
       const ded = Number(r.deductedTotal || 0);
@@ -900,7 +931,7 @@ VIEWS.user = async function () {
           });
       });
       $('#uBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-        if (!confirm('删除该账号？')) return;
+        if (!await confirmDialog('删除该账号？', '删除')) return;
         try { await api('/users/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
         catch (e) { toast(e.message, true); }
       });
