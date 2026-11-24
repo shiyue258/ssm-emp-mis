@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.PastOrPresent;
 import javax.validation.constraints.Size;
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -37,6 +38,7 @@ public class Attendance implements Serializable {
     private Integer empId;
 
     @NotNull(message = "工作日期不能为空")
+    @PastOrPresent(message = "考勤日期不能晚于今天")
     private LocalDate workDate;
 
     private LocalTime checkIn;

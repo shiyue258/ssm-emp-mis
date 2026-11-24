@@ -17,7 +17,7 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
-| 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、77 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
+| 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、78 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -617,7 +617,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
-- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 77 条，实际结果均为实测
+- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 78 条，实际结果均为实测
 - [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 29 条，另列 4 项未做到
 - [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
 - [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
@@ -722,7 +722,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
 | [docs/api.md](docs/api.md) | 36 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，21 条路径 36 个操作，可导入 ApiFox / Postman 生成接口树 |
-| [docs/test-cases.md](docs/test-cases.md) | 77 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
+| [docs/test-cases.md](docs/test-cases.md) | 78 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 
