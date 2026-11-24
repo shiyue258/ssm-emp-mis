@@ -159,3 +159,85 @@ CREATE TABLE op_log (
   COMMENT = '操作审计表';
 
 -- 说明：审计表不预置数据，随实际调用增长。
+
+-- ----------------------------------------------------------------------------
+-- attendance 考勤表
+--   (emp_id, work_date) 唯一：同一人同一天只能有一条，否则月度汇总会重复计数。
+--   check_out >= check_in 由 CHECK 兜底，防止登记时把时间写反。
+--   不加外键：emp 用的是逻辑删除，物理行不会消失，外键约束收益有限，
+--   而 init.sql 的建表顺序会因此变得脆弱。关联正确性由业务层校验。
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS attendance;
+
+CREATE TABLE attendance (
+    att_id      INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '考勤ID',
+    emp_id      INT UNSIGNED NOT NULL                COMMENT '员工ID',
+    work_date   DATE         NOT NULL                COMMENT '工作日期',
+    check_in    TIME         NULL                    COMMENT '上班打卡；缺勤为 NULL',
+    check_out   TIME         NULL                    COMMENT '下班打卡；缺勤为 NULL',
+    status      TINYINT      NOT NULL DEFAULT 0      COMMENT '0 正常 / 1 迟到 / 2 早退 / 3 缺勤',
+    remark      VARCHAR(100) NULL                    COMMENT '备注',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (att_id),
+    UNIQUE KEY uk_att_emp_date (emp_id, work_date),
+    KEY idx_att_work_date (work_date),
+    CONSTRAINT chk_att_status CHECK (status IN (0, 1, 2, 3)),
+    CONSTRAINT chk_att_time CHECK (check_out IS NULL OR check_in IS NULL OR check_out >= check_in)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '考勤表';
+
+INSERT INTO attendance (emp_id, work_date, check_in, check_out, status, remark, create_time, update_time) VALUES
+(1, '2026-11-02', '09:00:00', '18:00:00', 0, NULL,       '2026-11-02 18:05:00', '2026-11-02 18:05:00'),
+(2, '2026-11-02', '09:35:00', '18:05:00', 1, '地铁延误', '2026-11-02 18:05:00', '2026-11-02 18:05:00'),
+(3, '2026-11-02', '08:55:00', '16:30:00', 2, NULL,       '2026-11-02 18:05:00', '2026-11-02 18:05:00'),
+(4, '2026-11-02', NULL,       NULL,       3, '事假',     '2026-11-02 18:05:00', '2026-11-02 18:05:00'),
+(5, '2026-11-02', '09:00:00', '18:00:00', 0, NULL,       '2026-11-02 18:05:00', '2026-11-02 18:05:00'),
+(6, '2026-11-02', '09:02:00', '18:10:00', 1, NULL,       '2026-11-02 18:05:00', '2026-11-02 18:05:00'),
+(1, '2026-11-03', '08:58:00', '18:20:00', 0, NULL,       '2026-11-03 18:10:00', '2026-11-03 18:10:00'),
+(2, '2026-11-03', '09:00:00', '18:00:00', 0, NULL,       '2026-11-03 18:10:00', '2026-11-03 18:10:00'),
+(3, '2026-11-03', '09:00:00', '18:00:00', 0, NULL,       '2026-11-03 18:10:00', '2026-11-03 18:10:00'),
+(4, '2026-11-03', '09:10:00', '18:00:00', 1, NULL,       '2026-11-03 18:10:00', '2026-11-03 18:10:00'),
+(5, '2026-11-03', NULL,       NULL,       3, '病假',     '2026-11-03 18:10:00', '2026-11-03 18:10:00'),
+(6, '2026-11-03', '08:50:00', '18:00:00', 0, NULL,       '2026-11-03 18:10:00', '2026-11-03 18:10:00');
+
+-- ----------------------------------------------------------------------------
+-- salary_record 薪资发放记录
+--   (emp_id, month) 唯一：同一个月不能发两次。month 用 CHAR(7) 存 'YYYY-MM'，
+--   比存 DATE 更贴合「按月发放」的语义，也便于按前缀筛选。
+--   total 由服务端计算（base + bonus - deduction），不接受前端传入——
+--   否则前端报一个和明细对不上的总额，事后查不清是谁算错的。
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS salary_record;
+
+CREATE TABLE salary_record (
+    id          INT UNSIGNED   NOT NULL AUTO_INCREMENT COMMENT '记录ID',
+    emp_id      INT UNSIGNED   NOT NULL                COMMENT '员工ID',
+    month       CHAR(7)        NOT NULL                COMMENT '薪资月份 YYYY-MM',
+    base        DECIMAL(10, 2) NOT NULL                COMMENT '基本工资，生成时取 emp.salary',
+    bonus       DECIMAL(10, 2) NOT NULL DEFAULT 0.00   COMMENT '奖金',
+    deduction   DECIMAL(10, 2) NOT NULL DEFAULT 0.00   COMMENT '扣款',
+    total       DECIMAL(10, 2) NOT NULL                COMMENT '实发 = base + bonus - deduction',
+    status      TINYINT        NOT NULL DEFAULT 0      COMMENT '0 待发放 / 1 已发放',
+    create_time DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_sal_emp_month (emp_id, month),
+    KEY idx_sal_month (month),
+    CONSTRAINT chk_sal_status CHECK (status IN (0, 1)),
+    CONSTRAINT chk_sal_amount CHECK (base >= 0 AND bonus >= 0 AND deduction >= 0
+                                     AND total >= 0)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '薪资发放记录表';
+
+-- 用 INSERT ... SELECT 从 emp 取基数：硬编码会让种子数据与 emp 表脱节，
+-- 一旦改了某人的薪资，历史月份的基本工资就对不上了。
+INSERT INTO salary_record (emp_id, month, base, bonus, deduction, total, status, create_time, update_time)
+SELECT emp_id, '2026-10', salary, 500.00, 0.00, salary + 500.00, 1,
+       '2026-11-01 00:00:00', '2026-11-01 00:00:00'
+FROM emp
+WHERE deleted = 0 AND emp_id <= 6;

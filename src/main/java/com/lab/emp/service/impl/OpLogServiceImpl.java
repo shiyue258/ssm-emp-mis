@@ -46,7 +46,7 @@ public class OpLogServiceImpl implements OpLogService {
             entry.setOperator(StringUtils.hasText(operator) ? operator : "anonymous");
             entry.setAction(action);
             entry.setTarget(target);
-            entry.setDetail(truncate(detail));
+            entry.setDetail(sanitize(detail));
             entry.setResult(success ? 1 : 0);
             entry.setCreateTime(java.time.LocalDateTime.now());
             opLogMapper.insert(entry);
@@ -66,11 +66,17 @@ public class OpLogServiceImpl implements OpLogService {
         return opLogMapper.selectPage(new Page<>(pageNo, pageSize), wrapper);
     }
 
-    /** detail 列是 VARCHAR(500)，超长会导致插入失败。 */
-    private String truncate(String text) {
+    /**
+     * 把异常信息压成单行并截断。
+     *
+     * <p>两条理由：其一，{@code DuplicateKeyException} 的 message 里带换行与整段 SQL，
+     * 原样入库会让查询结果一行变十几行；其二，detail 列是 VARCHAR(500)，超长插入会失败。
+     */
+    private String sanitize(String text) {
         if (text == null) {
             return "";
         }
-        return text.length() <= 500 ? text : text.substring(0, 497) + "...";
+        String oneLine = text.replaceAll("\\s+", " ").trim();
+        return oneLine.length() <= 500 ? oneLine : oneLine.substring(0, 497) + "...";
     }
 }

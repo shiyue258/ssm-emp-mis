@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMP 员工管理 MIS</title>
+<style>
+  /* Fluent / Win11 风格：Mica 浅底、圆角卡片、细边框、克制的强调色 */
+  :root{
+    --mica:#f3f3f3;
+    --layer:#ffffff;
+    --layer-alt:#fafafa;
+    --stroke:rgba(0,0,0,.0578);
+    --stroke-strong:rgba(0,0,0,.12);
+    --text:#1b1b1b;
+    --text-2:#5c5c5c;
+    --text-3:#8a8a8a;
+    --accent:#0f7b6c;          /* 青绿，替代默认品牌蓝 */
+    --accent-hover:#0c6a5d;
+    --accent-weak:#e7f3f0;
+    --warn:#a15c00;
+    --warn-weak:#fdf3e5;
+    --danger:#c42b1c;
+    --danger-weak:#fdecea;
+    --ok:#0f7b0f;
+    --ok-weak:#e8f4e8;
+    --radius:10px;
+    --radius-sm:6px;
+    --radius-lg:14px;
+    --shadow-2:0 2px 4px rgba(0,0,0,.04), 0 0 1px rgba(0,0,0,.08);
+    --shadow-4:0 4px 12px rgba(0,0,0,.06), 0 0 1px rgba(0,0,0,.08);
+    --shadow-8:0 16px 40px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.10);
+    --ease:cubic-bezier(.2,.9,.3,1);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  ::selection{background:var(--accent-weak);color:var(--accent-hover)}
+  /* 细滚动条：默认滚动条会在圆角卡片上切出方角，观感很糙 */
+  *::-webkit-scrollbar{width:10px;height:10px}
+  *::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:10px;border:3px solid transparent;background-clip:content-box}
+  *::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.3);background-clip:content-box}
+  *::-webkit-scrollbar-track{background:transparent}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:3px}
+  body{
+    margin:0;color:var(--text);
+    font:14px/1.55 "Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 12% -10%, #eef7f4 0%, transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, #f6f1ec 0%, transparent 50%),
+      var(--mica);
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+  }
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  .hidden{display:none !important}
+
+  /* ---------- 登录 ---------- */
+  #login{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .login-card{
+    width:380px;background:var(--layer);border:1px solid var(--stroke);
+    border-radius:var(--radius-lg);box-shadow:var(--shadow-8), inset 0 1px 0 rgba(255,255,255,.85);
+    padding:28px 28px 24px;animation:pop .32s var(--ease);overflow:hidden;
+  }
+  @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:none}}
+  .login-mark{width:40px;height:40px;border-radius:12px;background:var(--accent-weak);display:grid;place-items:center;margin-bottom:14px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+  .login-mark svg{width:20px;height:20px;stroke:var(--accent);fill:none;stroke-width:1.8}
+  .login-card h1{font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:.2px}
+  .login-card p.sub{margin:0 0 20px;color:var(--text-2);font-size:12.5px}
+  .field{margin-bottom:14px;min-width:0}
+  .field label{display:block;font-size:12px;color:var(--text-2);margin-bottom:5px}
+  .field input,.field select{
+    width:100%;padding:8px 10px;background:var(--layer);
+    border:1px solid var(--stroke-strong);border-radius:var(--radius-sm);
+    outline:none;transition:border-color .15s var(--ease),box-shadow .15s var(--ease);
+  }
+  .field input:hover,.field select:hover{border-color:rgba(0,0,0,.22)}
+  .field input:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+  .field input:disabled{background:var(--layer-alt);color:var(--text-3)}
+
+  .btn{
+    padding:7px 14px;border:1px solid var(--stroke-strong);border-radius:var(--radius-sm);
+    background:var(--layer);color:var(--text);white-space:nowrap;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
+    transition:background .12s var(--ease),border-color .12s var(--ease),transform .06s var(--ease),box-shadow .12s var(--ease);
+  }
+  .btn:hover{background:#f7f7f7;border-color:rgba(0,0,0,.18)}
+  .btn:active{transform:scale(.985);background:#f0f0f0;box-shadow:none}
+  .btn:disabled{opacity:.45;cursor:default;box-shadow:none}
+  .btn-primary{background:linear-gradient(180deg,#14897a,#0f7b6c);border-color:#0e7163;color:#fff;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 1px 2px rgba(15,123,108,.18)}
+  .btn-primary:hover{background:linear-gradient(180deg,#127f72,#0c6a5d);border-color:#0b6458}
+  .btn-primary:active{background:#0a5c51;box-shadow:inset 0 1px 3px rgba(0,0,0,.18)}
+  .btn-danger{color:var(--danger);border-color:rgba(196,43,28,.35)}
+  .btn-danger:hover{background:var(--danger-weak);border-color:rgba(196,43,28,.5)}
+  .btn-sm{padding:3px 9px;font-size:12.5px;border-radius:var(--radius-sm)}
+  .btn-block{width:100%;padding:9px 14px}
+
+  /* ---------- 顶栏（横向导航） ---------- */
+  #app{min-height:100vh;display:flex;flex-direction:column}
+  header.app-bar{
+    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;
+    padding:0 20px;height:52px;background:rgba(255,255,255,.72);
+    backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:1px solid var(--stroke);
+    box-shadow:0 1px 0 rgba(255,255,255,.6);
+  }
+  .app-id{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;letter-spacing:.2px;flex:0 0 auto}
+  .app-id .dot{width:9px;height:9px;border-radius:2px;background:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+  nav.tabs{display:flex;align-items:stretch;gap:2px;height:100%;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+  nav.tabs::-webkit-scrollbar{display:none}
+  nav.tabs button{
+    position:relative;border:0;background:transparent;color:var(--text-2);
+    padding:0 12px;height:100%;font-size:13.5px;white-space:nowrap;
+    border-radius:var(--radius-sm);transition:background .12s var(--ease),color .12s var(--ease);
+  }
+  nav.tabs button:hover{background:rgba(0,0,0,.035);color:var(--text)}
+  nav.tabs button.active{color:var(--text);font-weight:600}
+  nav.tabs button.active::after{
+    content:"";position:absolute;left:12px;right:12px;bottom:0;height:3px;
+    border-radius:3px 3px 0 0;background:var(--accent);
+  }
+  .bar-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+  .who-chip{
+    display:flex;align-items:center;gap:7px;padding:3px 10px 3px 4px;
+    border:1px solid var(--stroke);border-radius:20px;background:rgba(255,255,255,.72);
+    font-size:12.5px;color:var(--text-2);
+  }
+  .who-chip .avatar{
+    width:24px;height:24px;border-radius:8px;
+    background:linear-gradient(180deg,#1a8f80,#0f7b6c);color:#fff;
+    display:grid;place-items:center;font-size:11.5px;font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.25);
+  }
+
+  /* ---------- 内容区 ---------- */
+  .content{padding:18px 20px 28px;animation:fade .22s var(--ease)}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .card{
+    background:var(--layer);border:1px solid var(--stroke);border-radius:var(--radius);
+    box-shadow:var(--shadow-2), inset 0 1px 0 rgba(255,255,255,.7);
+    padding:18px;
+  }
+  .card + .card{margin-top:14px}
+  .section-title{
+    font-size:13px;font-weight:600;color:var(--text-2);margin:18px 0 10px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .section-title::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--accent);opacity:.85}
+  .section-title:first-child{margin-top:0}
+
+  /* 工具条：所有条件横向排列，窄屏自动换行 */
+  .toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-bottom:14px}
+  .toolbar .field{margin:0}
+  .toolbar .field label{font-size:11.5px;margin-bottom:4px}
+  .toolbar .field input,.toolbar .field select{
+    padding:6px 9px;min-width:124px;background:var(--layer);
+  }
+  .toolbar .spacer{flex:1 1 12px}
+  .divider-v{width:1px;align-self:stretch;background:var(--stroke);margin:2px 2px}
+
+  /* ---------- 表格 ---------- */
+  .table-wrap{
+    overflow:auto;border:1px solid var(--stroke);border-radius:var(--radius);
+    background:var(--layer);box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--stroke);
+    font-variant-numeric:tabular-nums}
+  /* 首尾列内缩一点，避免文字贴住圆角边框 */
+  th:first-child,td:first-child{padding-left:14px}
+  th:last-child,td:last-child{padding-right:14px}
+  th{
+    position:sticky;top:0;z-index:1;background:var(--layer-alt);
+    color:var(--text-2);font-weight:600;font-size:12px;letter-spacing:.2px;
+  }
+  thead tr:first-child th:first-child{border-top-left-radius:9px}
+  thead tr:first-child th:last-child{border-top-right-radius:9px}
+  tbody tr{transition:background .1s var(--ease)}
+  tbody tr:hover{background:#fafcfb}
+  tbody tr:last-child td{border-bottom:0}
+  td.actions{display:flex;gap:6px}
+  .empty{padding:34px;text-align:center;color:var(--text-3);font-size:13px;
+    border:1px dashed #e6e6e6;border-radius:var(--radius);margin:2px;background:var(--layer-alt)}
+
+  /* ---------- 分页 ---------- */
+  .pager{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:12.5px;color:var(--text-2);flex-wrap:wrap}
+  .pager .spacer{flex:1}
+  .pager .range{color:var(--text-3)}
+
+  /* ---------- 徽标 ---------- */
+  .badge{
+    display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;
+    background:#efefef;color:var(--text-2);border:1px solid transparent;
+  }
+  .badge.ok{background:var(--ok-weak);color:var(--ok);border-color:rgba(15,123,15,.18)}
+  .badge.off{background:var(--danger-weak);color:var(--danger);border-color:rgba(196,43,28,.18)}
+  .badge.warn{background:var(--warn-weak);color:var(--warn);border-color:rgba(161,92,0,.18)}
+  .badge.id{background:#f4f4f4;color:var(--text-3);font-variant-numeric:tabular-nums;border-color:var(--stroke)}
+
+  /* ---------- 弹窗（Win11 ContentDialog 观感） ---------- */
+  dialog{
+    border:1px solid var(--stroke);border-radius:var(--radius-lg);padding:0;width:440px;max-width:94vw;
+    background:var(--layer);box-shadow:var(--shadow-8);overflow:hidden;
+    animation:pop .2s var(--ease);
+  }
+  dialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(2px)}
+  .dlg-head{padding:18px 20px 10px;font-weight:600;font-size:15px;letter-spacing:.2px}
+  .dlg-body{padding:0 20px 4px;max-height:62vh;overflow:auto}
+  .dlg-foot{padding:14px 20px 18px;display:flex;justify-content:flex-end;gap:8px;
+    background:var(--layer-alt);border-top:1px solid var(--stroke)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hint{color:var(--text-3);font-size:12px;margin:2px 0 0}
+
+  /* ---------- 提示 ---------- */
+  #toast{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:99;max-width:min(380px,90vw)}
+  .toast{
+    background:var(--layer);border:1px solid var(--stroke);border-left:3px solid var(--accent);
+    color:var(--text);padding:10px 14px;border-radius:var(--radius);font-size:13px;
+    box-shadow:var(--shadow-4);animation:slide .22s var(--ease);
+  }
+  .toast.err{border-left-color:var(--danger)}
+  @keyframes slide{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+
+  /* ---------- 加载态 ---------- */
+  .loading{display:flex;align-items:center;gap:8px;padding:26px;color:var(--text-3);font-size:13px}
+  .spinner{
+    width:14px;height:14px;border:2px solid rgba(0,0,0,.12);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---------- 窄屏 ---------- */
+  @media (max-width: 1100px){
+    nav.tabs button{padding:0 9px;font-size:13px}
+    .toolbar .field input,.toolbar .field select{min-width:104px}
+  }
+  @media (max-width: 760px){
+    header.app-bar{padding:0 10px;gap:8px;height:50px}
+    .app-id{font-size:12.5px;gap:6px}
+    .app-id .dot{width:8px;height:8px}
+    nav.tabs button{padding:0 9px;font-size:13px}
+    nav.tabs button.active::after{left:9px;right:9px;height:2.5px}
+    .who-chip .name{display:none}
+    .who-chip{padding:3px;gap:0}
+    .content{padding:12px}
+    .toolbar{gap:8px}
+    .toolbar .field{flex:1 1 26%;max-width:150px}
+    .toolbar .field input,.toolbar .field select{width:100%;min-width:0}
+    .divider-v{display:none}
+    .row2{grid-template-columns:1fr}
+    /* 窄屏时主操作单独占一行，避免被挤到角落 */
+    #content .toolbar > .btn-primary{flex:1 1 100%;justify-content:center;order:9}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 登录 ================= -->
+<div id="login">
+  <form class="login-card" id="loginForm">
+    <div class="login-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg>
+    </div>
+    <h1>EMP 员工管理 MIS</h1>
+    <p class="sub">SSM 全注解 · MyBatis-Plus · REST</p>
+    <div class="field">
+      <label for="u">用户名</label>
+      <input id="u" name="username" value="admin" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label for="p">口令</label>
+      <input id="p" name="password" type="password" value="123456" autocomplete="current-password" required>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">登录</button>
+  </form>
+</div>
+
+<!-- ================= 主界面 ================= -->
+<div id="app" class="hidden">
+  <header class="app-bar">
+    <div class="app-id"><span class="dot"></span>EMP MIS</div>
+    <nav class="tabs" id="nav">
+      <button data-view="emp" class="active">员工</button>
+      <button data-view="dept">部门</button>
+      <button data-view="att">考勤</button>
+      <button data-view="sal">薪资</button>
+      <button data-view="user">账号</button>
+      <button data-view="log">审计</button>
+    </nav>
+    <div class="bar-right">
+      <div class="who-chip"><span class="avatar" id="avatar">A</span><span class="name" id="who">—</span></div>
+      <button class="btn btn-sm" id="logoutBtn">退出</button>
+    </div>
+  </header>
+  <div class="content" id="content"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ===================== 基础工具 ===================== */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg, isErr) {
+  const n = document.createElement('div');
+  n.className = 'toast' + (isErr ? ' err' : '');
+  n.textContent = msg;
+  $('#toast').appendChild(n);
+  setTimeout(() => n.remove(), 3200);
+}
+
+function skeleton() {
+  return `<div class="loading"><span class="spinner"></span>加载中…</div>`;
+}
+
+async function api(path, options = {}) {
+  const opt = { credentials: 'same-origin', ...options };
+  if (opt.body && typeof opt.body !== 'string') {
+    opt.body = JSON.stringify(opt.body);
+    opt.headers = { 'Content-Type': 'application/json', ...(opt.headers || {}) };
+  }
+  const res = await fetch(path, opt);
+  if (res.status === 401) { showLogin(); throw new Error('未登录'); }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  if (json.code !== 200) throw new Error(json.message || '请求失败');
+  return json.data;
+}
+
+const STATUS_EMP = { 1: ['在职', 'ok'], 0: ['离职', 'off'] };
+const STATUS_SAL = { 1: ['已发放', 'ok'], 0: ['待发放', 'warn'] };
+const ATT_TYPE = { 0: '正常', 1: '迟到', 2: '早退', 3: '缺勤' };
+const badge = (map, v) => { const m = map[v] || [v, '']; return `<span class="badge ${m[1]}">${esc(m[0])}</span>`; };
+const money = (v) => v == null ? '—' : '¥' + Number(v).toFixed(2);
+const pageOf = (p) => ({ current: p.current || 1, pages: p.pages || 1, total: p.total || 0 });
+const idTag = (id) => `<span class="badge id">#${esc(id)}</span>`;
+
+function showLogin() {
+  $('#app').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+  setTimeout(() => $('#u').focus(), 50);
+}
+function showApp() {
+  $('#login').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+}
+
+/* ===================== 登录 / 退出 ===================== */
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  try {
+    const d = await api('/login', { method: 'POST', body: { username: fd.get('username'), password: fd.get('password') } });
+    setWho(d.displayName, d.username);
+    showApp();
+    switchView('emp');
+  } catch (err) { toast(err.message, true); }
+});
+
+function setWho(display, username) {
+  $('#who').textContent = display || username || '已登录';
+  $('#avatar').textContent = (display || username || 'U').trim().charAt(0).toUpperCase();
+  try { sessionStorage.setItem('who', JSON.stringify({ display, username })); } catch (e) { /* 忽略 */ }
+}
+
+$('#logoutBtn').addEventListener('click', async () => {
+  try { await api('/logout', { method: 'POST' }); } catch (e) { /* 忽略 */ }
+  try { sessionStorage.removeItem('who'); } catch (e) { /* 忽略 */ }
+  showLogin();
+});
+
+/* ===================== 视图切换 ===================== */
+const VIEWS = {};
+let currentView = 'emp';
+function switchView(name) {
+  currentView = name;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  const box = $('#content');
+  box.innerHTML = '';
+  if (VIEWS[name]) VIEWS[name]();
+}
+$('#nav').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-view]');
+  if (b) switchView(b.dataset.view);
+});
+
+/* ===================== 通用弹窗 ===================== */
+function openDialog(title, bodyHtml, onOk, okText) {
+  const dlg = document.createElement('dialog');
+  dlg.innerHTML = `
+    <form method="dialog">
+      <div class="dlg-head">${esc(title)}</div>
+      <div class="dlg-body">${bodyHtml}</div>
+      <div class="dlg-foot">
+        <button class="btn" value="cancel" formnovalidate>取消</button>
+        <button class="btn btn-primary" value="ok">${esc(okText || '保存')}</button>
+      </div>
+    </form>`;
+  document.body.appendChild(dlg);
+  dlg.addEventListener('close', async () => {
+    if (dlg.returnValue === 'ok') {
+      try { await onOk(new FormData(dlg.querySelector('form')), dlg); }
+      catch (err) { toast(err.message, true); }
+    }
+    dlg.remove();
+  });
+  dlg.showModal();
+}
+
+/* ===================== 一、员工 ===================== */
+VIEWS.emp = async function () {
+  const st = { page: 1, size: 10, name: '', dept: '', sortBy: 'empId', sortDir: 'desc' };
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>姓名</label><input id="fName" placeholder="模糊匹配"></div>
+        <div class="field"><label>部门</label><input id="fDept" placeholder="精确匹配"></div>
+        <div class="field"><label>排序</label>
+          <select id="fSort">
+            <option value="empId:desc">ID 降序</option>
+            <option value="salary:asc">薪资升序</option>
+            <option value="salary:desc">薪资降序</option>
+            <option value="hireDate:desc">入职时间降序</option>
+            <option value="empName:asc">姓名升序</option>
+          </select>
+        </div>
+        <button class="btn" id="btnSearch">查询</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="btnAdd">＋ 新增员工</button>
+      </div>
+      <div id="tableBox">${skeleton()}</div>
+      <div class="pager" id="pager"></div>
+    </div>`;
+
+  async function load() {
+    const q = new URLSearchParams({ page: st.page, size: st.size, sortBy: st.sortBy, sortDir: st.sortDir });
+    if (st.name) q.set('name', st.name);
+    if (st.dept) q.set('dept', st.dept);
+    try {
+      const p = await api('/emps?' + q);
+      const pg = pageOf(p);
+      $('#tableBox').innerHTML = p.records.length ? `
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>姓名</th><th>性别</th><th>部门</th><th>岗位</th><th>薪资</th><th>入职</th><th>状态</th><th>操作</th>
+        </tr></thead><tbody>
+        ${p.records.map(r => `<tr>
+          <td>${r.empId}</td><td><strong>${esc(r.empName)}</strong></td><td>${esc(r.gender)}</td>
+          <td>${esc(r.dept)}</td><td>${esc(r.post || '—')}</td><td>${money(r.salary)}</td>
+          <td>${esc(r.hireDate)}</td><td>${badge(STATUS_EMP, r.status)}</td>
+          <td class="actions">
+            <button class="btn btn-sm" data-edit="${r.empId}">编辑</button>
+            <button class="btn btn-sm btn-danger" data-del="${r.empId}">删除</button>
+          </td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">没有符合条件的员工</div>`;
+      $('#pager').innerHTML = `<span>共 ${pg.total} 条</span><span class="range">第 ${pg.current} / ${pg.pages} 页</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="prev" ${pg.current <= 1 ? 'disabled' : ''}>上一页</button>
+        <button class="btn btn-sm" id="next" ${pg.current >= pg.pages ? 'disabled' : ''}>下一页</button>`;
+      $('#prev') && ($('#prev').onclick = () => { st.page--; load(); });
+      $('#next') && ($('#next').onclick = () => { st.page++; load(); });
+      bindRowActions(p.records);
+    } catch (e) { $('#tableBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  function empForm(r = {}) {
+    return `
+      <div class="field"><label>姓名 *</label><input name="empName" value="${esc(r.empName || '')}" required></div>
+      <div class="row2">
+        <div class="field"><label>性别 *</label>
+          <select name="gender"><option ${r.gender === '男' ? 'selected' : ''}>男</option><option ${r.gender === '女' ? 'selected' : ''}>女</option></select></div>
+        <div class="field"><label>部门 *</label><input name="dept" value="${esc(r.dept || '')}" placeholder="须已存在" required></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>岗位</label><input name="post" value="${esc(r.post || '')}"></div>
+        <div class="field"><label>薪资 *</label><input name="salary" type="number" step="0.01" min="0" value="${r.salary ?? ''}" required></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>入职日期 *</label><input name="hireDate" type="date" value="${esc(r.hireDate || '')}" required></div>
+        <div class="field"><label>状态</label>
+          <select name="status">
+            <option value="1" ${r.status !== 0 ? 'selected' : ''}>在职</option>
+            <option value="0" ${r.status === 0 ? 'selected' : ''}>离职</option>
+          </select></div>
+      </div>`;
+  }
+  const payload = (fd) => ({
+    empName: fd.get('empName'), gender: fd.get('gender'), dept: fd.get('dept'),
+    post: fd.get('post') || null, salary: Number(fd.get('salary')),
+    hireDate: fd.get('hireDate'), status: Number(fd.get('status'))
+  });
+
+  function bindRowActions(records) {
+    $('#tableBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+      const r = records.find(x => String(x.empId) === b.dataset.edit);
+      openDialog('编辑员工 ' + idTag(r.empId).replace(/<[^>]+>/g, ''), empForm(r), async (fd) => {
+        await api('/emps', { method: 'PUT', body: { empId: r.empId, ...payload(fd) } });
+        toast('已保存'); load();
+      });
+    });
+    $('#tableBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!confirm('删除员工 #' + b.dataset.del + '？该操作为逻辑删除，历史考勤与薪资保留。')) return;
+      try { await api('/emps/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
+      catch (e) { toast(e.message, true); }
+    });
+  }
+
+  $('#btnSearch').onclick = () => {
+    st.name = $('#fName').value.trim();
+    st.dept = $('#fDept').value.trim();
+    const [sb, sd] = $('#fSort').value.split(':');
+    st.sortBy = sb; st.sortDir = sd; st.page = 1; load();
+  };
+  $('#fName').onkeydown = (e) => { if (e.key === 'Enter') $('#btnSearch').click(); };
+  $('#fDept').onkeydown = (e) => { if (e.key === 'Enter') $('#btnSearch').click(); };
+  $('#btnAdd').onclick = () => openDialog('新增员工', empForm(), async (fd) => {
+    await api('/emps', { method: 'POST', body: payload(fd) });
+    toast('已新增'); load();
+  });
+  load();
+};
+
+/* ===================== 二、部门 ===================== */
+VIEWS.dept = async function () {
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>部门名称</label><input id="dName" placeholder="模糊匹配"></div>
+        <button class="btn" id="dSearch">查询</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="dAdd">＋ 新增部门</button>
+      </div>
+      <div id="dBox">${skeleton()}</div>
+    </div>
+    <div class="card hidden" id="dCard">
+      <div class="section-title" id="dTitle"></div>
+      <div id="dEmp"></div>
+    </div>`;
+
+  async function load() {
+    const q = $('#dName').value.trim();
+    try {
+      const list = await api('/depts' + (q ? '?name=' + encodeURIComponent(q) : ''));
+      $('#dBox').innerHTML = list.length ? `
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>部门名称</th><th>办公地点</th><th>状态</th><th>操作</th></tr></thead><tbody>
+        ${list.map(d => `<tr>
+          <td>${d.deptId}</td><td><strong>${esc(d.deptName)}</strong></td><td>${esc(d.location || '—')}</td>
+          <td>${d.status === 1 ? '<span class="badge ok">启用</span>' : '<span class="badge off">停用</span>'}</td>
+          <td class="actions">
+            <button class="btn btn-sm" data-emp="${d.deptId}" data-name="${esc(d.deptName)}">查看员工</button>
+            <button class="btn btn-sm" data-edit="${d.deptId}">编辑</button>
+            <button class="btn btn-sm btn-danger" data-del="${d.deptId}">删除</button>
+          </td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">没有部门</div>`;
+
+      $('#dBox').querySelectorAll('[data-emp]').forEach(b => b.onclick = async () => {
+        try {
+          const emps = await api('/depts/' + b.dataset.emp + '/employees');
+          $('#dCard').classList.remove('hidden');
+          $('#dTitle').textContent = `「${b.dataset.name}」下的员工（${emps.length}）`;
+          $('#dEmp').innerHTML = emps.length ? `
+            <div class="table-wrap"><table><thead><tr><th>ID</th><th>姓名</th><th>岗位</th><th>薪资</th></tr></thead><tbody>
+            ${emps.map(e => `<tr><td>${e.empId}</td><td>${esc(e.empName)}</td><td>${esc(e.post || '—')}</td><td>${money(e.salary)}</td></tr>`).join('')}
+            </tbody></table></div>` : `<div class="empty">该部门暂无员工</div>`;
+        } catch (e) { toast(e.message, true); }
+      });
+
+      $('#dBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const d = list.find(x => String(x.deptId) === b.dataset.edit);
+        openDialog('编辑部门', deptForm(d), async (fd) => {
+          await api('/depts', { method: 'PUT', body: { deptId: d.deptId, ...payload(fd) } });
+          toast('已保存，员工所属部门已同步'); load();
+        });
+      });
+      $('#dBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('删除该部门？部门下仍有员工时会被拒绝。')) return;
+        try { await api('/depts/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
+        catch (e) { toast(e.message, true); }
+      });
+    } catch (e) { $('#dBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  function deptForm(d = {}) {
+    return `
+      <div class="field"><label>部门名称 *</label><input name="deptName" value="${esc(d.deptName || '')}" required></div>
+      <div class="field"><label>办公地点</label><input name="location" value="${esc(d.location || '')}"></div>
+      <div class="field"><label>状态</label>
+        <select name="status">
+          <option value="1" ${d.status !== 0 ? 'selected' : ''}>启用</option>
+          <option value="0" ${d.status === 0 ? 'selected' : ''}>停用</option>
+        </select></div>`;
+  }
+  const payload = (fd) => ({ deptName: fd.get('deptName'), location: fd.get('location') || '', status: Number(fd.get('status')) });
+
+  $('#dSearch').onclick = load;
+  $('#dName').onkeydown = (e) => { if (e.key === 'Enter') load(); };
+  $('#dAdd').onclick = () => openDialog('新增部门', deptForm(), async (fd) => {
+    await api('/depts', { method: 'POST', body: payload(fd) });
+    toast('已新增'); load();
+  });
+  load();
+};
+
+/* ===================== 三、考勤 ===================== */
+VIEWS.att = async function () {
+  const now = new Date().toISOString().slice(0, 7);
+  const st = { page: 1, size: 10, empId: '', month: now };
+  $('#content').innerHTML = `
+    <div class="card hidden" id="aSumCard">
+      <div class="section-title" id="aSumTitle"></div>
+      <div id="aSumBox"></div>
+    </div>
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>员工 ID</label><input id="aEmp" type="number" placeholder="不限"></div>
+        <div class="field"><label>月份</label><input id="aMonth" type="month" value="${now}"></div>
+        <button class="btn" id="aSearch">查询</button>
+        <div class="divider-v"></div>
+        <button class="btn" id="aSum">月度汇总</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="aAdd">＋ 登记考勤</button>
+      </div>
+      <div id="aBox">${skeleton()}</div>
+      <div class="pager" id="aPager"></div>
+    </div>`;
+
+  async function load() {
+    const q = new URLSearchParams({ page: st.page, size: st.size });
+    if (st.empId) q.set('empId', st.empId);
+    if (st.month) q.set('month', st.month);
+    try {
+      const p = await api('/attendance?' + q);
+      const pg = pageOf(p);
+      $('#aBox').innerHTML = p.records.length ? `
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>员工</th><th>日期</th><th>上班</th><th>下班</th><th>状态</th><th>备注</th><th>操作</th>
+        </tr></thead><tbody>
+        ${p.records.map(r => `<tr>
+          <td>${r.attId}</td>
+          <td>${esc(r.empName || '')} ${idTag(r.empId)}</td>
+          <td>${esc(r.workDate)}</td><td>${esc((r.checkIn || '').slice(0, 5) || '—')}</td>
+          <td>${esc((r.checkOut || '').slice(0, 5) || '—')}</td>
+          <td>${r.status === 3 ? '<span class="badge off">缺勤</span>' : r.status === 0 ? '<span class="badge ok">正常</span>' : `<span class="badge warn">${esc(ATT_TYPE[r.status])}</span>`}</td>
+          <td>${esc(r.remark || '—')}</td>
+          <td class="actions">
+            <button class="btn btn-sm" data-edit="${r.attId}">编辑</button>
+            <button class="btn btn-sm btn-danger" data-del="${r.attId}">删除</button>
+          </td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">该条件下没有考勤记录</div>`;
+      $('#aPager').innerHTML = `<span>共 ${pg.total} 条</span><span class="range">第 ${pg.current} / ${pg.pages} 页</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="ap" ${pg.current <= 1 ? 'disabled' : ''}>上一页</button>
+        <button class="btn btn-sm" id="an" ${pg.current >= pg.pages ? 'disabled' : ''}>下一页</button>`;
+      $('#ap') && ($('#ap').onclick = () => { st.page--; load(); });
+      $('#an') && ($('#an').onclick = () => { st.page++; load(); });
+      $('#aBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const r = p.records.find(x => String(x.attId) === b.dataset.edit);
+        openDialog('编辑考勤', attForm(r), async (fd) => {
+          await api('/attendance', { method: 'PUT', body: { attId: r.attId, ...payload(fd) } });
+          toast('已保存'); load();
+        });
+      });
+      $('#aBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('删除该考勤记录？')) return;
+        try { await api('/attendance/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
+        catch (e) { toast(e.message, true); }
+      });
+    } catch (e) { $('#aBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  function attForm(r = {}) {
+    return `
+      <div class="row2">
+        <div class="field"><label>员工 ID *</label><input name="empId" type="number" value="${r.empId ?? ''}" required></div>
+        <div class="field"><label>日期 *</label><input name="workDate" type="date" value="${esc(r.workDate || '')}" required></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>上班</label><input name="checkIn" type="time" value="${(r.checkIn || '').slice(0, 5)}"></div>
+        <div class="field"><label>下班</label><input name="checkOut" type="time" value="${(r.checkOut || '').slice(0, 5)}"></div>
+      </div>
+      <div class="field"><label>状态</label>
+        <select name="status">
+          <option value="0" ${r.status === 0 ? 'selected' : ''}>正常</option>
+          <option value="1" ${r.status === 1 ? 'selected' : ''}>迟到</option>
+          <option value="2" ${r.status === 2 ? 'selected' : ''}>早退</option>
+          <option value="3" ${r.status === 3 ? 'selected' : ''}>缺勤（不填打卡时间）</option>
+        </select></div>
+      <div class="field"><label>备注</label><input name="remark" value="${esc(r.remark || '')}"></div>`;
+  }
+  function payload(fd) {
+    const s = Number(fd.get('status'));
+    const t = (v) => s === 3 ? null : (v || null);
+    return {
+      empId: Number(fd.get('empId')), workDate: fd.get('workDate'),
+      checkIn: t(fd.get('checkIn')), checkOut: t(fd.get('checkOut')),
+      status: s, remark: fd.get('remark') || null
+    };
+  }
+
+  $('#aSearch').onclick = () => {
+    st.empId = $('#aEmp').value.trim();
+    st.month = $('#aMonth').value;
+    st.page = 1; load();
+  };
+  $('#aAdd').onclick = () => openDialog('登记考勤', attForm(), async (fd) => {
+    await api('/attendance', { method: 'POST', body: payload(fd) });
+    toast('已登记'); load();
+  });
+  $('#aSum').onclick = async () => {
+    const m = $('#aMonth').value || st.month;
+    if (!m) { toast('请先选择月份', true); return; }
+    $('#aSumCard').classList.remove('hidden');
+    $('#aSumTitle').textContent = m + ' 汇总';
+    $('#aSumBox').innerHTML = skeleton();
+    try {
+      const rows = await api('/attendance/summary?month=' + encodeURIComponent(m));
+      $('#aSumBox').innerHTML = rows.length ? `
+        <div class="table-wrap"><table><thead><tr>
+          <th>员工</th><th>应出勤</th><th>正常</th><th>迟到</th><th>早退</th><th>缺勤</th><th>出勤率</th>
+        </tr></thead><tbody>
+        ${rows.map(x => `<tr>
+          <td>${esc(x.empName)} ${idTag(x.empId)}</td>
+          <td>${x.totalDays}</td><td>${x.normalDays}</td><td>${x.lateDays}</td>
+          <td>${x.earlyDays}</td><td>${x.absentDays}</td>
+          <td><strong>${x.attendanceRate}%</strong></td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">该月无考勤记录</div>`;
+    } catch (e) { $('#aSumBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  };
+  load();
+};
+
+/* ===================== 四、薪资 ===================== */
+VIEWS.sal = async function () {
+  const now = new Date().toISOString().slice(0, 7);
+  const st = { page: 1, size: 10, empId: '', month: now };
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>员工 ID</label><input id="sEmp" type="number" placeholder="不限"></div>
+        <div class="field"><label>月份</label><input id="sMonth" type="month" value="${now}"></div>
+        <button class="btn" id="sSearch">查询</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="sGen">按月生成</button>
+      </div>
+      <div id="sBox">${skeleton()}</div>
+      <div class="pager" id="sPager"></div>
+    </div>`;
+
+  async function load() {
+    const q = new URLSearchParams({ page: st.page, size: st.size });
+    if (st.empId) q.set('empId', st.empId);
+    if (st.month) q.set('month', st.month);
+    try {
+      const p = await api('/salaries?' + q);
+      const pg = pageOf(p);
+      $('#sBox').innerHTML = p.records.length ? `
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>员工</th><th>月份</th><th>基本</th><th>奖金</th><th>扣款</th><th>实发</th><th>状态</th><th>操作</th>
+        </tr></thead><tbody>
+        ${p.records.map(r => `<tr>
+          <td>${r.id}</td><td>${esc(r.empName || '')} ${idTag(r.empId)}</td><td>${esc(r.month)}</td>
+          <td>${money(r.base)}</td><td>${money(r.bonus)}</td><td>${money(r.deduction)}</td>
+          <td><strong>${money(r.total)}</strong></td><td>${badge(STATUS_SAL, r.status)}</td>
+          <td class="actions">
+            ${r.status === 0
+              ? `<button class="btn btn-sm" data-edit="${r.id}">调整</button>
+                 <button class="btn btn-sm btn-primary" data-pay="${r.id}">发放</button>
+                 <button class="btn btn-sm btn-danger" data-del="${r.id}">删除</button>`
+              : '<span class="badge">已锁定</span>'}
+          </td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">该月份还没有薪资记录，点右上「按月生成」</div>`;
+      $('#sPager').innerHTML = `<span>共 ${pg.total} 条</span><span class="range">第 ${pg.current} / ${pg.pages} 页</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="sp" ${pg.current <= 1 ? 'disabled' : ''}>上一页</button>
+        <button class="btn btn-sm" id="sn" ${pg.current >= pg.pages ? 'disabled' : ''}>下一页</button>`;
+      $('#sp') && ($('#sp').onclick = () => { st.page--; load(); });
+      $('#sn') && ($('#sn').onclick = () => { st.page++; load(); });
+      $('#sBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const r = p.records.find(x => String(x.id) === b.dataset.edit);
+        openDialog('调整薪资 · ' + r.month, `
+          <div class="field"><label>员工</label><input value="${esc(r.empName || '')} #${r.empId}" disabled></div>
+          <div class="field"><label>基本工资</label><input name="base" type="number" step="0.01" min="0" value="${r.base}" required></div>
+          <div class="row2">
+            <div class="field"><label>奖金</label><input name="bonus" type="number" step="0.01" min="0" value="${r.bonus}" required></div>
+            <div class="field"><label>扣款</label><input name="deduction" type="number" step="0.01" min="0" value="${r.deduction}" required></div>
+          </div>
+          <p class="hint">实发金额由服务端重算：基本 + 奖金 − 扣款</p>`,
+          async (fd) => {
+            await api('/salaries', { method: 'PUT', body: {
+              id: r.id, empId: r.empId, month: r.month,
+              base: Number(fd.get('base')), bonus: Number(fd.get('bonus')), deduction: Number(fd.get('deduction'))
+            }});
+            toast('已保存，实发已重算'); load();
+          });
+      });
+      $('#sBox').querySelectorAll('[data-pay]').forEach(b => b.onclick = async () => {
+        if (!confirm('确认发放？发放后不可修改、不可删除。')) return;
+        try { await api('/salaries/' + b.dataset.pay + '/pay', { method: 'PUT' }); toast('已发放'); load(); }
+        catch (e) { toast(e.message, true); }
+      });
+      $('#sBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('删除该待发放记录？')) return;
+        try { await api('/salaries/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
+        catch (e) { toast(e.message, true); }
+      });
+    } catch (e) { $('#sBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  $('#sSearch').onclick = () => {
+    st.empId = $('#sEmp').value.trim();
+    st.month = $('#sMonth').value;
+    st.page = 1; load();
+  };
+  $('#sGen').onclick = async () => {
+    const m = $('#sMonth').value;
+    if (!m) { toast('请先选择月份', true); return; }
+    try {
+      const r = await api('/salaries/generate?month=' + encodeURIComponent(m), { method: 'POST' });
+      toast(`生成 ${r.generated} 条，跳过 ${r.skipped} 条（当月已存在）`);
+      load();
+    } catch (e) { toast(e.message, true); }
+  };
+  load();
+};
+
+/* ===================== 五、账号 ===================== */
+VIEWS.user = async function () {
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>关键字</label><input id="uKey" placeholder="用户名或显示名"></div>
+        <button class="btn" id="uSearch">查询</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="uAdd">＋ 新增账号</button>
+      </div>
+      <div id="uBox">${skeleton()}</div>
+    </div>`;
+
+  async function load() {
+    const k = $('#uKey').value.trim();
+    try {
+      const p = await api('/users?page=1&size=50' + (k ? '&keyword=' + encodeURIComponent(k) : ''));
+      $('#uBox').innerHTML = `
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>用户名</th><th>显示名</th><th>状态</th><th>创建时间</th><th>操作</th>
+        </tr></thead><tbody>
+        ${p.records.map(u => `<tr>
+          <td>${u.userId}</td><td><strong>${esc(u.username)}</strong></td><td>${esc(u.displayName)}</td>
+          <td>${u.status === 1 ? '<span class="badge ok">启用</span>' : '<span class="badge off">停用</span>'}</td>
+          <td>${esc(u.createTime || '—')}</td>
+          <td class="actions">
+            <button class="btn btn-sm" data-edit="${u.userId}">改名 / 启停</button>
+            <button class="btn btn-sm" data-pwd="${u.userId}">重置口令</button>
+            <button class="btn btn-sm btn-danger" data-del="${u.userId}">删除</button>
+          </td></tr>`).join('')}
+        </tbody></table></div>`;
+      $('#uBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const u = p.records.find(x => String(x.userId) === b.dataset.edit);
+        openDialog('编辑账号', `
+          <div class="field"><label>用户名</label><input value="${esc(u.username)}" disabled></div>
+          <div class="field"><label>显示名 *</label><input name="displayName" value="${esc(u.displayName)}" required></div>
+          <div class="field"><label>状态</label>
+            <select name="status">
+              <option value="1" ${u.status === 1 ? 'selected' : ''}>启用</option>
+              <option value="0" ${u.status === 0 ? 'selected' : ''}>停用</option>
+            </select></div>
+          <p class="hint">不能停用当前登录的账号；系统会拦截。</p>`,
+          async (fd) => {
+            await api('/users', { method: 'PUT', body: {
+              userId: u.userId, displayName: fd.get('displayName'), status: Number(fd.get('status'))
+            }});
+            toast('已保存'); load();
+          });
+      });
+      $('#uBox').querySelectorAll('[data-pwd]').forEach(b => b.onclick = () => {
+        openDialog('重置口令', `
+          <div class="field"><label>新口令（6-32 位）*</label>
+            <input name="newPassword" type="password" required minlength="6" maxlength="32"></div>
+          <p class="hint">口令以 SHA-256 摘要存储，不保存明文。</p>`,
+          async (fd) => {
+            await api('/users/' + b.dataset.pwd + '/password', { method: 'PUT', body: { newPassword: fd.get('newPassword') } });
+            toast('口令已重置');
+          });
+      });
+      $('#uBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (!confirm('删除该账号？')) return;
+        try { await api('/users/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
+        catch (e) { toast(e.message, true); }
+      });
+    } catch (e) { $('#uBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  $('#uSearch').onclick = load;
+  $('#uKey').onkeydown = (e) => { if (e.key === 'Enter') load(); };
+  $('#uAdd').onclick = () => openDialog('新增账号', `
+    <div class="field"><label>用户名 *</label><input name="username" required></div>
+    <div class="field"><label>初始口令 *（6-32 位）</label><input name="password" type="password" required minlength="6" maxlength="32"></div>
+    <div class="field"><label>显示名 *</label><input name="displayName" required></div>
+    <div class="field"><label>状态</label>
+      <select name="status"><option value="1">启用</option><option value="0">停用</option></select></div>`,
+    async (fd) => {
+      await api('/users', { method: 'POST', body: {
+        username: fd.get('username'), password: fd.get('password'),
+        displayName: fd.get('displayName'), status: Number(fd.get('status'))
+      }});
+      toast('已新增'); load();
+    });
+  load();
+};
+
+/* ===================== 六、审计 ===================== */
+VIEWS.log = async function () {
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="field"><label>操作人</label><input id="lOp" placeholder="模糊匹配"></div>
+        <button class="btn" id="lSearch">查询</button>
+        <div class="spacer"></div>
+        <span class="badge">只记录写操作</span>
+      </div>
+      <div id="lBox">${skeleton()}</div>
+    </div>`;
+
+  async function load() {
+    const op = $('#lOp').value.trim();
+    try {
+      const p = await api('/op-logs?page=1&size=50' + (op ? '&operator=' + encodeURIComponent(op) : ''));
+      $('#lBox').innerHTML = p.records.length ? `
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>时间</th><th>操作人</th><th>方法</th><th>路径</th><th>结果</th><th>说明</th>
+        </tr></thead><tbody>
+        ${p.records.map(r => `<tr>
+          <td>${r.logId}</td><td>${esc(r.createTime)}</td><td>${esc(r.operator)}</td>
+          <td>${esc(r.action)}</td><td>${esc(r.target)}</td>
+          <td>${r.result === 1 ? '<span class="badge ok">成功</span>' : '<span class="badge off">失败</span>'}</td>
+          <td>${esc(r.detail)}</td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">暂无审计记录</div>`;
+    } catch (e) { $('#lBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+  $('#lSearch').onclick = load;
+  $('#lOp').onkeydown = (e) => { if (e.key === 'Enter') load(); };
+  load();
+};
+
+/* ===================== 启动 ===================== */
+(async function boot() {
+  try {
+    const users = await api('/users?page=1&size=1');
+    if (!users) return showLogin();
+    let who = null;
+    try { who = JSON.parse(sessionStorage.getItem('who') || 'null'); } catch (e) { /* 忽略 */ }
+    if (who) setWho(who.display, who.username); else setWho('管理员', 'admin');
+    showApp();
+    switchView('emp');
+  } catch (e) {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>

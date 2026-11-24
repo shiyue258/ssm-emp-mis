@@ -1,7 +1,5 @@
 package com.lab.emp.common;
 
-import java.io.Serializable;
-
 /**
  * 业务异常：表示「可预期的、调用方能自行处理」的失败，例如员工不存在、ID 为空。
  *

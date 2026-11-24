@@ -15,6 +15,7 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.DefaultServletHandlerConfigurer;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.time.LocalDate;
@@ -53,6 +54,18 @@ public class SpringMvcConfig implements WebMvcConfigurer {
     @Override
     public void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) {
         configurer.enable();
+    }
+
+    /**
+     * 根路径指向单页前端。
+     *
+     * <p>war 内放了 {@code index.html} 作为演示界面。直接访问 {@code /} 时，
+     * 若不加这条映射，请求会落到默认 Servlet 去找欢迎页；在 DispatcherServlet
+     * 抢占 {@code "/"} 的情况下行为依赖容器实现，不如显式 forward 来得确定。
+     */
+    @Override
+    public void addViewControllers(ViewControllerRegistry registry) {
+        registry.addViewController("/").setViewName("forward:/index.html");
     }
 
     /**
@@ -119,6 +132,9 @@ public class SpringMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new LoginInterceptor())
                 .addPathPatterns("/**")
-                .excludePathPatterns("/login", "/health", "/health/db");
+                // 前端页面必须在登录前就能加载，否则会陷入「要登录才能打开登录页」的死锁。
+                // 页面本身不含数据，数据一律由受保护的接口提供，因此放行是安全的。
+                .excludePathPatterns("/login", "/health", "/health/db",
+                        "/", "/index.html", "/favicon.ico");
     }
 }

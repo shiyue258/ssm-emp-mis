@@ -17,7 +17,7 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
-| 状态 | 🚧 **扩展中**：员工、部门已完整交付；账号管理与操作审计已加入（待文档总校）；考勤与薪资进行中 |
+| 状态 | 🚧 **功能已齐**：员工 / 部门 / 账号 / 考勤 / 薪资五个业务域 + 操作审计 + 单页管理界面；文档总校待下一次提交 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -38,9 +38,10 @@
 - [五、构建与运行](#五构建与运行)
   - [5.2 初始化数据库与构建](#52-初始化数据库与构建)
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
-  - [5.4 目前验证到哪一步](#54-目前验证到哪一步)
-  - [5.5 事务失效三场景实验](#55-事务失效三场景实验)
-  - [5.6 故障排查手册](#56-故障排查手册)
+  - [5.4 打开管理界面](#54-打开管理界面)
+  - [5.5 目前验证到哪一步](#55-目前验证到哪一步)
+  - [5.6 事务失效三场景实验](#56-事务失效三场景实验)
+  - [5.7 故障排查手册](#57-故障排查手册)
 - [六、评分点与工程产出的对照](#六评分点与工程产出的对照)
 - [七、路线图](#七路线图任务-27)
 - [八、与实验一的关系](#八与实验一的关系)
@@ -399,6 +400,19 @@ mvn -B clean package
 
 > 这也是「war 名与仓库名一致」的代价——名字长，但换来仓库名、构件名、产物名三者统一。上下文路径在 Tomcat 里是一行配置，可以随时压平。
 
+### 5.4 打开管理界面
+
+启动后浏览器访问 `http://localhost:8080/`，即为单页管理界面：
+
+| 项 | 说明 |
+| :--- | :--- |
+| 源码 | `src/main/webapp/index.html`，单文件、零外部依赖（无 CDN、无前端构建） |
+| 技术 | 原生 HTML + CSS + `fetch`，直接调本工程 REST 接口 |
+| 覆盖 | 员工 / 部门 / 考勤 / 薪资 / 账号 / 审计六个页面，含分页、筛选、弹窗表单 |
+| 登录 | 默认 `admin / 123456`；会话仍由 `LoginInterceptor` 校验，未登录访问接口返回 401 |
+
+界面只是接口的可视化外壳，业务规则全部在服务端：例如「部门下仍有员工不可删」「已发放薪资不可改」在页面上也会被后端拒绝并弹提示。
+
 本地验证采用的方式（与上表等价，可复现）：
 
 ```bash
@@ -415,7 +429,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 **关于 `--add-opens`：实测不需要。** JDK 17 的强封装理论上会让反射密集的库报 `InaccessibleObjectException`，本工程实测（清空 `JDK_JAVA_OPTIONS` 与 `CATALINA_OPTS` 后启动）Spring 5.3.31 + MyBatis-Plus 3.5.3.1 + Druid 1.2.20 + Hibernate Validator 6.2.5 组合启动与查库均正常。原本 `pom.xml` 的 surefire 配置里预置了两条 `--add-opens` 作兜底，移除后 `mvn test` 4 个用例同样全绿，因此已删除——无效配置留着只会让后来者以为「必须加」。`argLine` 仅保留 `-Dfile.encoding=UTF-8`，它的作用是在默认编码非 UTF-8 的环境（如 Windows 的 GBK）下保证中文断言不乱码。
 
-### 5.4 目前验证到哪一步
+### 5.5 目前验证到哪一步
 
 分四组。全部为实际执行结果，未通过的项留在表内并标注 ⬜。
 
@@ -478,13 +492,13 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | AOP 请求日志 | ✅ `[REQ] AuthController#login 入参=[LoginDTO{username=admin, password=***}]` + `[RESP] 耗时` |
 | 日志中明文口令计数 | ✅ `grep -c 123456` = 0 |
 | `mvn -B test` | ✅ Tests run: 4, Failures: 0, Errors: 0 |
-| 事务失效三场景 | ✅ 见 [5.5](#55-事务失效三场景实验)，三个「不回滚」与一个「回滚」同时成立 |
+| 事务失效三场景 | ✅ 见 [5.6](#56-事务失效三场景实验)，三个「不回滚」与一个「回滚」同时成立 |
 | GitHub Actions CI | ✅ run `43783591630`，62 秒通过：建库导入 SQL、4 用例、war 打包全部成功 |
 | 字段自动填充 | ✅ INSERT 语句含 `create_time, update_time`；UPDATE 的 SET 子句含 `update_time`（改前由数据库 `ON UPDATE` 兜底，不出现在 SQL 里） |
 | 列表排序参数 | ✅ `sortBy` 白名单（empId / empName / salary / hireDate）+ `sortDir`；注入尝试 `sortBy=empName;drop table emp--` 回落默认且表完好；默认排序未变 |
 | 部门模块 | ✅ 13 个场景通过：列表 6 条、名称过滤、单条、不存在、该部门 4 名员工、新增、重名拒绝、空名拒绝、改名级联（4 条员工同步、旧名 0 残留）、有员工拒删、空部门可删、改回复原 |
 
-### 5.5 事务失效三场景实验
+### 5.6 事务失效三场景实验
 
 指导书要求验证「异常被吞掉 / 自调用 / private 方法」三种事务失效。三个场景的共同特征是**静默失效**：不报错、不抛业务异常、日志正常，只有数据不对。因此断言不能看「方法有没有抛异常」，只能看「库里那一行还在不在」。
 
@@ -507,7 +521,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 
 > **这个实验顺带暴露了一个生产缺陷。** 首次跑测试时报 `IllegalStateException: No ServletContext set`：`SpringConfig` 的组件扫描把同包的 `SpringMvcConfig`（它本身也是 `@Configuration`）一起扫进了根容器，于是根容器照着 `@EnableWebMvc` 又建了一整套 `HandlerMapping` / `HandlerAdapter`。Web 环境下因为有 ServletContext 而不报错，只是白白多建一套组件——**问题一直存在，直到纯容器测试才暴露**。修复方式是在根容器扫描时按类型排除 `SpringMvcConfig`。修复后回归部署，`/health/db`、登录与列表接口均正常。
 
-### 5.6 故障排查手册
+### 5.7 故障排查手册
 
 开发与部署期间实际踩过的问题（Tomcat 启动即退出、502 来自代理、日期被序列化成数组、`No ServletContext set`、事务静默不回滚、405 被兜底处理器吞掉等），按「现象 → 根因 → 处理」逐条记录在 **[docs/troubleshooting.md](docs/troubleshooting.md)**。只收录实测复现过的条目。
 
@@ -609,7 +623,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 
 指导书要求验证「异常被 try-catch 吞掉 / `this` 自调用 / 注解加在 private 方法上」。三者都是**静默失效**——不报错、不抛异常，只能靠数据比对发现。
 
-**结论**：已实现为 `TransactionFailureTest` 的 4 个用例（A 对照组 + B/C/D 三种失效），断言只看「库里那一行还在不在」，不看方法有没有抛异常。详见 [5.5](#55-事务失效三场景实验)。
+**结论**：已实现为 `TransactionFailureTest` 的 4 个用例（A 对照组 + B/C/D 三种失效），断言只看「库里那一行还在不在」，不看方法有没有抛异常。详见 [5.6](#56-事务失效三场景实验)。
 
 ---
 
@@ -641,6 +655,9 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-22 | 更新收尾状态：路线图任务 7 拆成四项打勾，ApiFox 如实标为待录入；第九节标题由「已知待解决」改为「曾经的设计决策与结论」，四条各补最终做法与证据位置 |
 | 2026-11-23 | 新增部门管理模块：`dept` 表（名称唯一、CHECK 约束、6 条种子）+ 实体/Mapper/Service/Controller，六个接口；删除时校验部门下无员工，改名时同事务级联刷新 `emp.dept`；用例补至 47 条 |
 | 2026-11-23 | 新增账号管理与操作审计：`op_log` 表 + `AuditAspect`（写操作落库，`REQUIRES_NEW` 独立事务）；六个用户接口，含「不能停用/删除自己」与「不能删最后一个启用账号」；口令摘要工具抽到 `PasswordEncoder`，`SysUser.passwordHash` 加 `@JsonIgnore`；日志切面的口令打码改为按字段名正则，覆盖新增的 DTO |
+| 2026-11-24 | 新增考勤与薪资模块：`attendance`（`emp_id + work_date` 唯一、CHECK 校验打卡时间与状态）、`salary_record`（`emp_id + month` 唯一、实发由服务端计算）；月度汇总与批量生成均用「一次 IN 查询」避开 N+1；薪资生成幂等，已发放记录不可改删 |
+| 2026-11-24 | 新增单页管理界面 `src/main/webapp/index.html`（原生 HTML/CSS/fetch，零外部依赖）：顶栏横向导航、六页面、分页筛选与弹窗表单；`SpringMvcConfig` 增加 `/` 转发与静态资源放行，接口仍受登录拦截保护 |
+| 2026-11-24 | 修复三处衔接与协议问题：员工写入校验部门是否存在于 `dept` 表；考勤/薪资列表补 `empName`（批量回填）；缺参数与不支持的 Content-Type 分别返回 400/415，并发唯一键冲突提示「请勿重复提交」 |
 
 ---
 

@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lab.emp.common.BusinessException;
 import com.lab.emp.dto.EmpQueryDTO;
+import com.lab.emp.entity.Dept;
 import com.lab.emp.entity.Emp;
+import com.lab.emp.mapper.DeptMapper;
 import com.lab.emp.mapper.EmpMapper;
 import com.lab.emp.service.EmpService;
 import org.springframework.stereotype.Service;
@@ -36,6 +38,7 @@ import java.util.Map;
 public class EmpServiceImpl implements EmpService {
 
     private final EmpMapper empMapper;
+    private final DeptMapper deptMapper;
 
     /**
      * 允许排序的字段白名单。
@@ -58,8 +61,9 @@ public class EmpServiceImpl implements EmpService {
     }
 
     /** 构造器注入：单一构造器时无需 @Autowired，也便于单元测试直接 new。 */
-    public EmpServiceImpl(EmpMapper empMapper) {
+    public EmpServiceImpl(EmpMapper empMapper, DeptMapper deptMapper) {
         this.empMapper = empMapper;
+        this.deptMapper = deptMapper;
     }
 
     @Override
@@ -104,6 +108,7 @@ public class EmpServiceImpl implements EmpService {
         }
         // 新增时 ID 由数据库自增，前端传入的 empId 一律忽略，避免覆盖既有记录
         emp.setEmpId(null);
+        requireDeptExists(emp.getDept());
         return empMapper.insert(emp) > 0;
     }
 
@@ -114,6 +119,7 @@ public class EmpServiceImpl implements EmpService {
             throw new BusinessException("员工信息不能为空");
         }
         requireId(emp.getEmpId());
+        requireDeptExists(emp.getDept());
         int rows = empMapper.updateById(emp);
         if (rows == 0) {
             // 影响 0 行只有两种可能：ID 不存在，或该记录已被逻辑删除
@@ -131,6 +137,27 @@ public class EmpServiceImpl implements EmpService {
             throw new BusinessException("员工不存在或已删除：" + empId);
         }
         return true;
+    }
+
+    /**
+     * 校验部门名称在 {@code dept} 表中确实存在。
+     *
+     * <p>这是两个模块之间「写方向」唯一的一致性约束。反方向（部门改名时级联刷新
+     * {@code emp.dept}）已经做了；若这里不校验，就形成单向一致：部门改了员工跟着变，
+     * 员工却能挂到一个部门表里根本没有的名称上。那条记录永远不会出现在
+     * {@code GET /depts/{id}/employees} 的结果里，按部门做的统计也会漏掉它。
+     *
+     * <p>dept 为空时不校验：允许暂时不指定部门（表上该列也允许为空字符串）。
+     */
+    private void requireDeptExists(String dept) {
+        if (!StringUtils.hasText(dept)) {
+            return;
+        }
+        Long count = deptMapper.selectCount(new LambdaQueryWrapper<Dept>()
+                .eq(Dept::getDeptName, dept));
+        if (count == null || count == 0) {
+            throw new BusinessException("部门不存在：" + dept + "，请先在部门管理中创建");
+        }
     }
 
     @Override

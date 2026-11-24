@@ -2,11 +2,14 @@ package com.lab.emp.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -74,6 +77,49 @@ public class GlobalExceptionHandler {
         log.warn("不支持的请求方法：{}", e.getMethod());
         return Result.fail(HttpStatus.METHOD_NOT_ALLOWED.value(),
                 "不支持的请求方法：" + e.getMethod());
+    }
+
+    /**
+     * 唯一键冲突，例如两个并发请求同时登记同一天考勤。
+     *
+     * <p>业务层都做了「先查重再插入」的预检查，但预检查挡不住并发：两个线程可能
+     * 同时通过检查，最后由数据库唯一键裁定胜负。此时若不单独处理，异常会落到
+     * 兜底分支变成「系统繁忙」——用户完全不知道是自己重复提交了。
+     *
+     * <p>实测：5 个并发登记同一天考勤，1 个成功、4 个命中此分支。
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    public Result<Void> handleDuplicateKey(DuplicateKeyException e) {
+        log.warn("唯一键冲突：{}", e.getMessage());
+        return Result.fail("该记录已存在，请勿重复提交");
+    }
+
+    /**
+     * 缺少必需的查询参数，例如 {@code GET /attendance/summary} 不带 month。
+     *
+     * <p>与 405 同类：不加这一条会被兜底成 HTTP 200 + 「系统繁忙」，调用方完全
+     * 不知道是自己漏传了参数。这类「框架自带状态码的异常」必须逐个显式声明，
+     * 兜底分支只应处理真正预料之外的情况。
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleMissingParameter(MissingServletRequestParameterException e) {
+        log.warn("缺少必需参数：{}", e.getParameterName());
+        return Result.fail(HttpStatus.BAD_REQUEST.value(),
+                "缺少必需参数：" + e.getParameterName());
+    }
+
+    /**
+     * 请求的 Content-Type 不受支持，例如把 JSON 接口当表单提交。
+     *
+     * <p>不声明的话同样会被兜底吃掉，正确的语义是 415。
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+    public Result<Void> handleMediaType(HttpMediaTypeNotSupportedException e) {
+        log.warn("不支持的媒体类型：{}", e.getContentType());
+        return Result.fail(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(),
+                "不支持的请求类型：" + e.getContentType() + "，请使用 application/json");
     }
 
     /**
