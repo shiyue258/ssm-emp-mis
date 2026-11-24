@@ -1,6 +1,7 @@
 package com.lab.emp.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lab.emp.common.RequirePermission;
 import com.lab.emp.common.Result;
 import com.lab.emp.dto.SalaryGenerateResult;
 import com.lab.emp.entity.SalaryRecord;
@@ -33,6 +34,7 @@ public class SalaryController {
         this.salaryService = salaryService;
     }
 
+    @RequirePermission("sal:read")
     @GetMapping
     public Result<Page<SalaryRecord>> page(@RequestParam(required = false) Integer empId,
                                            @RequestParam(required = false) String month,
@@ -41,22 +43,26 @@ public class SalaryController {
         return Result.ok(salaryService.page(empId, month, page, size));
     }
 
+    @RequirePermission("sal:read")
     @GetMapping("/{id}")
     public Result<SalaryRecord> get(@PathVariable("id") Integer id) {
         return Result.ok(salaryService.getById(id));
     }
 
+    @RequirePermission("sal:write")
     @PostMapping("/generate")
     public Result<SalaryGenerateResult> generate(@RequestParam String month) {
         return Result.ok(salaryService.generate(month));
     }
 
     /** 按当前考勤重算待发放记录；已发放的跳过。 */
+    @RequirePermission("sal:write")
     @PostMapping("/recalculate")
     public Result<SalaryGenerateResult> recalculate(@RequestParam String month) {
         return Result.ok(salaryService.recalculate(month));
     }
 
+    @RequirePermission("sal:write")
     @PutMapping
     public Result<Void> update(@RequestBody @Valid SalaryRecord record) {
         if (record.getId() == null) {
@@ -66,12 +72,14 @@ public class SalaryController {
         return Result.ok();
     }
 
+    @RequirePermission("sal:write")
     @PutMapping("/{id}/pay")
     public Result<Void> pay(@PathVariable("id") Integer id) {
         salaryService.pay(id);
         return Result.ok();
     }
 
+    @RequirePermission("sal:write")
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable("id") Integer id) {
         salaryService.remove(id);

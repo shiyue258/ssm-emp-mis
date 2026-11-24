@@ -1,5 +1,6 @@
 package com.lab.emp.controller;
 
+import com.lab.emp.common.RequirePermission;
 import com.lab.emp.common.Result;
 import com.lab.emp.entity.Dept;
 import com.lab.emp.entity.Emp;
@@ -37,18 +38,21 @@ public class DeptController {
     }
 
     /** 列表，可选按名称模糊过滤。 */
+    @RequirePermission("dept:read")
     @GetMapping
     public Result<List<Dept>> list(@RequestParam(required = false) String name) {
         return Result.ok(deptService.listAll(name));
     }
 
     /** 单条查询。 */
+    @RequirePermission("dept:read")
     @GetMapping("/{id}")
     public Result<Dept> get(@PathVariable("id") Integer id) {
         return Result.ok(deptService.getById(id));
     }
 
     /** 新增。 */
+    @RequirePermission("dept:write")
     @PostMapping
     public Result<Void> add(@RequestBody @Valid Dept dept) {
         deptService.add(dept);
@@ -56,6 +60,7 @@ public class DeptController {
     }
 
     /** 修改。名称变更时会级联刷新员工所属部门。 */
+    @RequirePermission("dept:write")
     @PutMapping
     public Result<Void> update(@RequestBody @Valid Dept dept) {
         if (dept.getDeptId() == null) {
@@ -66,6 +71,7 @@ public class DeptController {
     }
 
     /** 删除。部门下仍有员工时返回业务失败。 */
+    @RequirePermission("dept:write")
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable("id") Integer id) {
         deptService.remove(id);
@@ -73,6 +79,7 @@ public class DeptController {
     }
 
     /** 该部门下的员工列表。 */
+    @RequirePermission("dept:read")
     @GetMapping("/{id}/employees")
     public Result<List<Emp>> employees(@PathVariable("id") Integer id) {
         return Result.ok(deptService.listEmployees(id));

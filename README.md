@@ -17,8 +17,8 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.3.0`：相对 `v1.2.0` 新增薪资标准表（按生效日期）、薪资重算与界面优化 |
-| 表数量 | 6 张：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard`（另有审计表 `op_log`） |
-| 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、80 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
+| 表数量 | 10 张：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard` / `role` / `permission` / `user_role` / `role_permission`（另有审计表 `op_log`，共 11 张） |
+| 状态 | ✅ **已完成**：48 个接口（健康 2 / 认证 2 + 当前用户 1 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 8 / 角色与权限 9 / 审计 1）、90 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -38,6 +38,7 @@
   - [4.4 部门表](#44-部门表ssm_empdept)
   - [4.5 考勤如何影响薪资](#45-考勤如何影响薪资)
   - [4.6 薪资标准：为什么不能直接用 emp.salary](#46-薪资标准为什么不能直接用-empsalary)
+  - [4.7 权限模型：从「登录了」到「能不能做这件事」](#47-权限模型从登录了到能不能做这件事)
 - [五、构建与运行](#五构建与运行)
   - [5.2 初始化数据库与构建](#52-初始化数据库与构建)
   - [5.3 部署到 Tomcat 9 与接口基址](#53-部署到-tomcat-9-与接口基址)
@@ -186,6 +187,18 @@
 | 32 | PUT | `/users/{id}/password` | 重置口令 | ✅ 已实现 |
 | 33 | DELETE | `/users/{id}` | 删除账号（两道防护） | ✅ 已实现 |
 | 34 | GET | `/op-logs` | 操作审计查询（只读） | ✅ 已实现 |
+| 35 | GET | `/me` | 当前登录人与权限集合 | ✅ 已实现 |
+| 36 | GET | `/roles` | 角色列表 | ✅ 已实现 |
+| 37 | GET | `/roles/{id}` | 角色单条 | ✅ 已实现 |
+| 38 | POST | `/roles` | 新增角色 | ✅ 已实现 |
+| 39 | PUT | `/roles` | 修改角色 | ✅ 已实现 |
+| 40 | DELETE | `/roles/{id}` | 删除角色（内置 ADMIN 与已绑定角色拒删） | ✅ 已实现 |
+| 41 | GET | `/roles/permissions` | 全部权限点（供勾选） | ✅ 已实现 |
+| 42 | GET | `/roles/{id}/permissions` | 角色已分配权限 | ✅ 已实现 |
+| 43 | PUT | `/roles/{id}/permissions` | 覆盖式分配权限 | ✅ 已实现 |
+| 44 | GET | `/roles/users/{id}` | 某账号的角色 | ✅ 已实现 |
+| 45 | GET | `/users/{id}/roles` | 某账号的角色 ID 列表 | ✅ 已实现 |
+| 46 | PUT | `/users/{id}/roles` | 覆盖式分配角色（最后管理员受保护） | ✅ 已实现 |
 
 > 第 7、8 条是指导书「登录权限拦截」的配套实现——没有登录入口就无法演示 401，故单列。
 >
@@ -457,6 +470,33 @@ CREATE TABLE salary_standard (
 
 为什么生效日取「当月 1 日」而不是「今天」：薪资按月核算，月中改薪需要按日折算，那套规则本工程未实现；取 1 日意味着「本月起按新标准」，语义简单且不会在月内出现两套基准。
 
+### 4.7 权限模型：从「登录了」到「能不能做这件事」
+
+登录只解决身份，权限解决授权。两者分开实现：
+
+| 层 | 组件 | 回答的问题 | 失败响应 |
+| :--- | :--- | :--- | :--- |
+| 拦截器 | `LoginInterceptor` | 有没有登录 | 401 |
+| 切面 | `PermissionAspect` | 这个登录的人能不能调这个接口 | 403 |
+
+**四张表**：`role`（角色）、`permission`（权限点）、`user_role`（账号-角色）、`role_permission`（角色-权限）。权限点编码形如 `emp:write`，与注解取值一一对应：
+
+```java
+@RequirePermission("emp:write")
+@PostMapping
+public Result<Void> add(@RequestBody @Valid Emp emp) { ... }
+```
+
+**为什么用切面而不是拦截器**：拦截器只能按 URL 前缀猜意图（`/emps` 的 POST 要写权限），规则与路由耦合，新增接口时漏改就是越权。注解跟着方法走，看得见、改得动。
+
+**为什么权限每次查库、不放进 session**：撤权必须立即生效。实测流程是：管理员清空 HR 角色的权限 → 该账号下一次请求立刻 403；恢复后立刻 200。缓存在会话里会出现「已撤权但还能用」，这在权限系统里是最危险的错误方向。
+
+**三条防呆**：内置 `ADMIN` 角色不可删；仍有账号绑定的角色不可删；不允许把最后一个管理员改成别的角色（一旦没有管理员，系统内没有任何后门可以改回来）。
+
+**界面的角色**：`GET /me` 返回权限集合，前端据此隐藏导航与写操作按钮。这只是体验收敛——**隐藏按钮不等于限制调用**，越权请求仍会被切面拒绝并返回 403。
+
+种子角色：`ADMIN`（12 个权限点全量）、`HR`（员工/部门/考勤/薪资 8 个）、`VIEWER`（只读 5 个）。示例账号 `hr01`、`viewer01`，口令均 `123456`。
+
 ---
 
 ## 五、构建与运行
@@ -602,6 +642,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 薪资重算 | ✅ 补录缺勤后 `recalculate` 使张伟扣款变为 850.57（18500÷21.75）；对已发放的 2026-10 返回 `generated=0, skipped=6`，未改动 |
 | 考勤日期校验 | ✅ 未来日期 2027-06-01 被拒（`考勤日期不能晚于今天`），当天正常通过 |
 | 单页界面 | ✅ 浏览器实操：登录、员工增删改、部门「查看员工」、考勤月度汇总、薪资生成与重算、审计列表均正常；XSS 载荷 `<img onerror>` 原样显示为文本 |
+| 权限模型 | ✅ 三角色 17 权限点：viewer 写员工 403、hr 访问角色 403、admin 全通；清空 HR 权限后立即 403，恢复后立即 200；最后管理员降级被拒 |
 | 响应耗时 | ✅ 查询 11–68 ms（首次含预编译）、写操作 60–96 ms；连续 60 次查询 0 失败，并发 10 请求全 200 |
 
 ### 5.6 事务失效三场景实验
@@ -671,7 +712,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
-- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 80 条，实际结果均为实测
+- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 90 条，实际结果均为实测
 - [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 31 条，另列 7 项未做到
 - [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
 - [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
@@ -766,6 +807,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-24 | 修复三处衔接与协议问题：员工写入校验部门是否存在于 `dept` 表；考勤/薪资列表补 `empName`（批量回填）；缺参数与不支持的 Content-Type 分别返回 400/415，并发唯一键冲突提示「请勿重复提交」 |
 | 2026-11-24 | 打通「考勤 → 薪资」：考勤状态改由打卡时间推导（客户端传值忽略），薪资生成时按缺勤/迟到/早退计算扣款，规则集中在 `SalaryRule`；停用部门不再允许分配员工；种子数据与推导规则对齐 |
 | 2026-11-24 | 新增 `POST /salaries/recalculate`：补录考勤后可重算待发放记录，已发放跳过；文档总校——`api.md` 补 4 章 19 个接口，`openapi.yaml` 扩到 21 路径 36 操作，`test-cases.md` 扩到 77 条（9 组），README 计数与交付文档描述同步 |
+| 2026-11-24 | 新增权限模型：`role` / `permission` / `user_role` / `role_permission` 四表，`@RequirePermission` + `PermissionAspect` 实现接口级鉴权（403）；内置 ADMIN/HR/VIEWER 三角色，权限实时生效；界面按 `/me` 收敛导航与写按钮；接口 48、用例 90 |
 | 2026-11-24 | 新增 `salary_standard` 薪资标准表（按生效日期留存调薪历史）：生成薪资改取当月适用标准，修复「补生成历史月份用当前薪资」；员工表单部门改下拉、登记考勤日期默认今天、考勤变动后提示重算；用例补至 80 条 |
 
 ---
@@ -777,7 +819,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
 | [docs/api.md](docs/api.md) | 36 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
 | [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，21 条路径 36 个操作，可导入 ApiFox / Postman 生成接口树 |
-| [docs/test-cases.md](docs/test-cases.md) | 80 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
+| [docs/test-cases.md](docs/test-cases.md) | 90 条接口用例（10 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 31 条开发规范逐条对照，附「未做到的部分」7 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 

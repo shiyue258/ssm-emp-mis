@@ -1,6 +1,7 @@
 package com.lab.emp.aspect;
 
 import com.lab.emp.common.BusinessException;
+import com.lab.emp.common.ForbiddenException;
 import com.lab.emp.common.LoginUser;
 import com.lab.emp.service.OpLogService;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -82,6 +83,10 @@ public class AuditAspect {
     private String describe(Throwable t) {
         if (t instanceof BusinessException) {
             return ((BusinessException) t).getMessage();
+        }
+        if (t instanceof ForbiddenException) {
+            // 记下具体缺哪个权限，比只记类名有用得多
+            return ((ForbiddenException) t).getMessage();
         }
         if (t instanceof DuplicateKeyException) {
             return "唯一键冲突：并发重复提交被拒绝";

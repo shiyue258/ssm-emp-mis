@@ -52,7 +52,8 @@
 | 19 | 口令不落明文 | 库中存 `SHA-256(明文)` 摘要，实体不含 `password` 字段 | `sys_user` 表、`AuthServiceImpl.java` |
 | 20 | 不通过错误提示泄露账号是否存在 | 「用户不存在」与「口令错误」返回同一句提示 | 同上 |
 | 21 | 凭证不写死在代码/仓库 | `jdbc.properties` 仅存本地默认值，支持 `EMP_DB_PASSWORD` 环境变量覆盖 | `SpringConfig.java` |
-| 22 | 未登录请求在入口拦截 | `LoginInterceptor` 返回 401，放行名单仅 `/login`、`/health` | `SpringMvcConfig.java` |
+| 22 | 未登录请求在入口拦截 | `LoginInterceptor` 返回 401，放行名单仅 `/login`、`/health` 与首页 | `SpringMvcConfig.java` |
+| 22.1 | 已登录请求做接口级授权 | `@RequirePermission` + `PermissionAspect`；缺权限返回 403，权限实时查库不缓存 | `PermissionAspect.java` |
 
 ## 七、测试
 

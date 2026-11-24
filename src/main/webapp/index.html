@@ -298,12 +298,13 @@
   <header class="app-bar">
     <div class="app-id"><span class="dot"></span>EMP MIS</div>
     <nav class="tabs" id="nav">
-      <button data-view="emp" class="active">员工</button>
-      <button data-view="dept">部门</button>
-      <button data-view="att">考勤</button>
-      <button data-view="sal">薪资</button>
-      <button data-view="user">账号</button>
-      <button data-view="log">审计</button>
+      <button data-view="emp" data-perm="emp:read" class="active">员工</button>
+      <button data-view="dept" data-perm="dept:read">部门</button>
+      <button data-view="att" data-perm="att:read">考勤</button>
+      <button data-view="sal" data-perm="sal:read">薪资</button>
+      <button data-view="user" data-perm="user:read">账号</button>
+      <button data-view="role" data-perm="role:write">角色</button>
+      <button data-view="log" data-perm="log:read">审计</button>
     </nav>
     <div class="bar-right">
       <div class="who-chip"><span class="avatar" id="avatar">A</span><span class="name" id="who">—</span></div>
@@ -352,6 +353,45 @@ const ATT_TYPE = { 0: '正常', 1: '迟到', 2: '早退', 3: '缺勤' };
 const badge = (map, v) => { const m = map[v] || [v, '']; return `<span class="badge ${m[1]}">${esc(m[0])}</span>`; };
 const money = (v) => v == null ? '—' : '¥' + Number(v).toFixed(2);
 const pageOf = (p) => ({ current: p.current || 1, pages: p.pages || 1, total: p.total || 0 });
+
+/* 当前登录人的权限集合：只用于隐藏入口，真正的拦截在服务端 PermissionAspect */
+let PERMS = new Set();
+const can = (code) => PERMS.has(code);
+
+async function loadMe() {
+  const me = await api('/me');
+  PERMS = new Set(me.permissions || []);
+  setWho(me.displayName, me.username);
+  document.querySelectorAll('#nav button[data-perm]').forEach(b => {
+    b.classList.toggle('hidden', !PERMS.has(b.dataset.perm));
+  });
+  return me;
+}
+
+function firstAllowedView() {
+  const b = document.querySelector('#nav button[data-perm]:not(.hidden)');
+  return b ? b.dataset.view : 'emp';
+}
+
+/**
+ * 按权限收敛写操作入口：没有对应 write 权限时，隐藏新增按钮并移除行内
+ * 编辑/删除/发放按钮。仅影响可见性——真正拦截在服务端切面，越权调用仍返回 403。
+ */
+function hideWrites(perm) {
+  if (can(perm)) return;
+  document.querySelectorAll('#content .toolbar > .btn-primary').forEach(b => b.classList.add('hidden'));
+  document.querySelectorAll('#content [data-edit], #content [data-del], #content [data-pay]')
+    .forEach(b => b.remove());
+  // 行内按钮删掉后，表头会留下一个空的「操作」列，一并移除
+  const hasAction = document.querySelector('#content [data-edit], #content [data-del], #content [data-pay]');
+  if (!hasAction) {
+    document.querySelectorAll('#content thead th:last-child').forEach(th => th.remove());
+    document.querySelectorAll('#content tbody tr').forEach(tr => {
+      const last = tr.lastElementChild;
+      if (last && last.tagName === 'TD' && last.children.length === 0) last.remove();
+    });
+  }
+}
 const idTag = (id) => `<span class="badge id">#${esc(id)}</span>`;
 
 function showLogin() {
@@ -371,8 +411,9 @@ $('#loginForm').addEventListener('submit', async (e) => {
   try {
     const d = await api('/login', { method: 'POST', body: { username: fd.get('username'), password: fd.get('password') } });
     setWho(d.displayName, d.username);
+    await loadMe();
     showApp();
-    switchView('emp');
+    switchView(firstAllowedView());
   } catch (err) { toast(err.message, true); }
 });
 
@@ -504,6 +545,7 @@ VIEWS.emp = async function () {
       $('#prev') && ($('#prev').onclick = () => { st.page--; load(); });
       $('#next') && ($('#next').onclick = () => { st.page++; load(); });
       bindRowActions(p.records);
+      hideWrites('emp:write');
     } catch (e) { $('#tableBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
 
@@ -577,7 +619,7 @@ VIEWS.emp = async function () {
     await api('/emps', { method: 'POST', body: payload(fd) });
     toast('已新增'); load();
   });
-  load();
+  load().then(() => hideWrites('dept:write'));
 };
 
 /* ===================== 二、部门 ===================== */
@@ -658,7 +700,7 @@ VIEWS.dept = async function () {
     await api('/depts', { method: 'POST', body: payload(fd) });
     toast('已新增'); load();
   });
-  load();
+  load().then(() => hideWrites('att:write'));
 };
 
 /* ===================== 三、考勤 ===================== */
@@ -801,7 +843,7 @@ VIEWS.att = async function () {
         </tbody></table></div>` : `<div class="empty">该月无考勤记录</div>`;
     } catch (e) { $('#aSumBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   };
-  load();
+  load().then(() => hideWrites('sal:write'));
 };
 
 /* ===================== 四、薪资 ===================== */
@@ -909,7 +951,7 @@ VIEWS.sal = async function () {
       load();
     } catch (e) { toast(e.message, true); }
   };
-  load();
+  load().then(() => hideWrites('user:write'));
 };
 
 /* ===================== 五、账号 ===================== */
@@ -1031,16 +1073,115 @@ VIEWS.log = async function () {
   load();
 };
 
+/* ===================== 七、角色与权限 ===================== */
+VIEWS.role = async function () {
+  $('#content').innerHTML = `
+    <div class="card">
+      <div class="toolbar">
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="rAdd">＋ 新增角色</button>
+      </div>
+      <div id="rBox">${skeleton()}</div>
+    </div>
+    <div class="card">
+      <div class="section-title">权限说明</div>
+      <div class="hint">权限点由种子数据定义，角色勾选后立即生效；前端隐藏入口只是界面收敛，真正的校验在服务端切面，越权调用会返回 403。</div>
+    </div>`;
+
+  let roles = [];
+
+  async function load() {
+    try {
+      roles = await api('/roles');
+      $('#rBox').innerHTML = `
+        <div class="table-wrap"><table><thead><tr>
+          <th>ID</th><th>角色编码</th><th>角色名称</th><th>说明</th><th>操作</th>
+        </tr></thead><tbody>
+        ${roles.map(r => `<tr>
+          <td>${r.roleId}</td><td><strong>${esc(r.roleCode)}</strong></td>
+          <td>${esc(r.roleName)}</td><td>${esc(r.remark || '—')}</td>
+          <td class="actions">
+            <button class="btn btn-sm" data-perm="${r.roleId}">分配权限</button>
+            <button class="btn btn-sm" data-edit="${r.roleId}">编辑</button>
+            <button class="btn btn-sm btn-danger" data-del="${r.roleId}">删除</button>
+          </td></tr>`).join('')}
+        </tbody></table></div>`;
+      bind();
+    } catch (e) { $('#rBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  function bind() {
+    $('#rBox').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+      const r = roles.find(x => String(x.roleId) === b.dataset.edit);
+      openDialog('编辑角色', roleForm(r), async (fd) => {
+        await api('/roles', { method: 'PUT', body: {
+          roleId: r.roleId, roleCode: fd.get('roleCode'),
+          roleName: fd.get('roleName'), remark: fd.get('remark') || null
+        }});
+        toast('已保存'); load();
+      });
+    });
+    $('#rBox').querySelectorAll('[data-perm]').forEach(b => b.onclick = () => {
+      const r = roles.find(x => String(x.roleId) === b.dataset.perm);
+      assignPerms(r);
+    });
+    $('#rBox').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      if (!await confirmDialog('删除该角色？仍有账号绑定时会被拒绝。', '删除')) return;
+      try { await api('/roles/' + b.dataset.del, { method: 'DELETE' }); toast('已删除'); load(); }
+      catch (e) { toast(e.message, true); }
+    });
+  }
+
+  function roleForm(r = {}) {
+    return `
+      <div class="field"><label>角色编码 *</label><input name="roleCode" value="${esc(r.roleCode || '')}" placeholder="如 FINANCE" required></div>
+      <div class="field"><label>角色名称 *</label><input name="roleName" value="${esc(r.roleName || '')}" required></div>
+      <div class="field"><label>说明</label><input name="remark" value="${esc(r.remark || '')}"></div>`;
+  }
+
+  async function assignPerms(r) {
+    try {
+      const [all, owned] = await Promise.all([
+        api('/roles/permissions'),
+        api('/roles/' + r.roleId + '/permissions')
+      ]);
+      const set = new Set(owned);
+      const modules = [...new Set(all.map(p => p.module))];
+      const body = modules.map(m => `
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:6px">${esc(m)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 16px">
+          ${all.filter(p => p.module === m).map(p => `
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+              <input type="checkbox" name="perm" value="${p.permId}" ${set.has(p.permId) ? 'checked' : ''}>
+              ${esc(p.permName)} <span style="color:var(--text-3);font-size:12px">${esc(p.permCode)}</span>
+            </label>`).join('')}
+          </div>
+        </div>`).join('');
+      openDialog('分配权限 · ' + r.roleName, body, async (fd, dlg) => {
+        const ids = [...dlg.querySelectorAll('input[name="perm"]:checked')].map(x => Number(x.value));
+        await api('/roles/' + r.roleId + '/permissions', { method: 'PUT', body: ids });
+        toast('已保存，授权立即生效');
+      }, '保存授权');
+    } catch (e) { toast(e.message, true); }
+  }
+
+  $('#rAdd').onclick = () => openDialog('新增角色', roleForm(), async (fd) => {
+    await api('/roles', { method: 'POST', body: {
+      roleCode: fd.get('roleCode'), roleName: fd.get('roleName'), remark: fd.get('remark') || null
+    }});
+    toast('已新增，请继续分配权限'); load();
+  });
+
+  load();
+};
+
 /* ===================== 启动 ===================== */
 (async function boot() {
   try {
-    const users = await api('/users?page=1&size=1');
-    if (!users) return showLogin();
-    let who = null;
-    try { who = JSON.parse(sessionStorage.getItem('who') || 'null'); } catch (e) { /* 忽略 */ }
-    if (who) setWho(who.display, who.username); else setWho('管理员', 'admin');
+    await loadMe();
     showApp();
-    switchView('emp');
+    switchView(firstAllowedView());
   } catch (e) {
     showLogin();
   }

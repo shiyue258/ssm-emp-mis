@@ -1,6 +1,7 @@
 package com.lab.emp.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lab.emp.common.RequirePermission;
 import com.lab.emp.common.Result;
 import com.lab.emp.entity.OpLog;
 import com.lab.emp.service.OpLogService;
@@ -25,6 +26,7 @@ public class OpLogController {
         this.opLogService = opLogService;
     }
 
+    @RequirePermission("log:read")
     @GetMapping
     public Result<Page<OpLog>> page(@RequestParam(required = false) String operator,
                                     @RequestParam(defaultValue = "1") int page,

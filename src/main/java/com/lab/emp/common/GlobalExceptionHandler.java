@@ -80,6 +80,19 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 权限不足，由 {@code PermissionAspect} 抛出。
+     *
+     * <p>用 HTTP 403 而不是 200 + code=500：调用方（含 ApiFox 用例）需要能一眼区分
+     * 「业务失败」与「没权限」。若混在 200 里，只能靠解析 message 判断。
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Result<Void> handleForbidden(ForbiddenException e) {
+        log.warn("权限不足：{}", e.getMessage());
+        return Result.fail(HttpStatus.FORBIDDEN.value(), e.getMessage());
+    }
+
+    /**
      * 唯一键冲突，例如两个并发请求同时登记同一天考勤。
      *
      * <p>业务层都做了「先查重再插入」的预检查，但预检查挡不住并发：两个线程可能

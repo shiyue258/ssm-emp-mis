@@ -1,6 +1,7 @@
 package com.lab.emp.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lab.emp.common.RequirePermission;
 import com.lab.emp.common.Result;
 import com.lab.emp.dto.AttendanceSummaryVO;
 import com.lab.emp.entity.Attendance;
@@ -35,6 +36,7 @@ public class AttendanceController {
         this.attendanceService = attendanceService;
     }
 
+    @RequirePermission("att:read")
     @GetMapping
     public Result<Page<Attendance>> page(@RequestParam(required = false) Integer empId,
                                          @RequestParam(required = false) String month,
@@ -43,22 +45,26 @@ public class AttendanceController {
         return Result.ok(attendanceService.page(empId, month, page, size));
     }
 
+    @RequirePermission("att:read")
     @GetMapping("/summary")
     public Result<List<AttendanceSummaryVO>> summary(@RequestParam String month) {
         return Result.ok(attendanceService.summary(month));
     }
 
+    @RequirePermission("att:read")
     @GetMapping("/{id}")
     public Result<Attendance> get(@PathVariable("id") Integer id) {
         return Result.ok(attendanceService.getById(id));
     }
 
+    @RequirePermission("att:write")
     @PostMapping
     public Result<Void> add(@RequestBody @Valid Attendance attendance) {
         attendanceService.add(attendance);
         return Result.ok();
     }
 
+    @RequirePermission("att:write")
     @PutMapping
     public Result<Void> update(@RequestBody @Valid Attendance attendance) {
         if (attendance.getAttId() == null) {
@@ -68,6 +74,7 @@ public class AttendanceController {
         return Result.ok();
     }
 
+    @RequirePermission("att:write")
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable("id") Integer id) {
         attendanceService.remove(id);

@@ -37,7 +37,7 @@
                               └───────────────────┘
 ```
 
-表清单：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard` / `op_log`。
+表清单：`emp` / `dept` / `sys_user` / `attendance` / `salary_record` / `salary_standard` / `role` / `permission` / `user_role` / `role_permission` / `op_log`（11 张）。
 
 ## 二、父子容器边界
 
@@ -103,6 +103,7 @@
 | :--- | :--- | :--- | :--- |
 | `WebLogAspect` | 控制台日志 | 无 | 入参、耗时、异常（口令打码） |
 | `AuditAspect` | `op_log` 表 | `REQUIRES_NEW` 独立事务 | 操作人、方法、路径、结果；失败也落库 |
+| `PermissionAspect` | 无（拦截） | 无 | 校验 `@RequirePermission`；不足返回 403 |
 
 独立事务是必须的：若共用业务事务，业务回滚会把「这次操作失败了」的记录一起滚掉，而失败恰恰最需要留痕。
 
@@ -129,7 +130,7 @@
 | 模型 | `Emp` / `Dept` / `SysUser` / `Attendance` / `SalaryRecord` / `SalaryStandard` / `OpLog` | 表映射，均带 JSR-303 |
 | 公共 | `Result` / `BusinessException` / `GlobalExceptionHandler` | 统一返回与九类异常出口 |
 | 公共 | `PasswordEncoder` / `SalaryRule` | 口令摘要；日薪与扣款规则（单一出处） |
-| 横切 | `LoginInterceptor` / `WebLogAspect` / `AuditAspect` | 登录校验、请求日志、操作审计 |
+| 横切 | `LoginInterceptor` / `WebLogAspect` / `AuditAspect` / `PermissionAspect` | 登录校验、请求日志、操作审计、接口鉴权 |
 | 前端 | `webapp/index.html` | 单页界面，原生 fetch 调接口，零外部依赖 |
 
 ## 五、分层原则

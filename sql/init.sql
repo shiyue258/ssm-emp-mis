@@ -9,6 +9,11 @@
 
 SET NAMES utf8mb4;
 
+-- 关掉外键检查：脚本按「先建被引用表、后建引用表」的顺序 DROP/CREATE，
+-- 而 user_role 对 sys_user、role_permission 对 role/permission 都有外键，
+-- 直接删被引用表会报 ERROR 3730。开关在脚本末尾恢复。
+SET FOREIGN_KEY_CHECKS = 0;
+
 CREATE DATABASE IF NOT EXISTS ssm_emp
     DEFAULT CHARACTER SET utf8mb4
     DEFAULT COLLATE utf8mb4_unicode_ci;
@@ -273,3 +278,101 @@ INSERT INTO salary_standard (emp_id, base, effective_from, create_time)
 SELECT emp_id, salary, hire_date, '2026-01-01 00:00:00'
 FROM emp
 WHERE deleted = 0;
+
+-- ----------------------------------------------------------------------------
+-- 权限模型：role / user_role / permission / role_permission
+--   评分表要求「角色分配及细粒度权限拦截；基于 Spring AOP 实现接口权限校验」。
+--   权限粒度到「接口动作」（如 emp:write），由 @RequirePermission 注解 + 切面校验，
+--   而不是在 if 里硬编码角色名——角色可增删，注解不动。
+-- ----------------------------------------------------------------------------
+DROP TABLE IF EXISTS role_permission;
+DROP TABLE IF EXISTS user_role;
+DROP TABLE IF EXISTS permission;
+DROP TABLE IF EXISTS role;
+
+CREATE TABLE role (
+    role_id     INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '角色ID',
+    role_code   VARCHAR(30)  NOT NULL                COMMENT '角色编码，如 ADMIN',
+    role_name   VARCHAR(50)  NOT NULL                COMMENT '角色名称',
+    remark      VARCHAR(100) NULL                    COMMENT '说明',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (role_id),
+    UNIQUE KEY uk_role_code (role_code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '角色表';
+
+CREATE TABLE permission (
+    perm_id     INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '权限ID',
+    perm_code   VARCHAR(50)  NOT NULL                COMMENT '权限编码，如 emp:write',
+    perm_name   VARCHAR(50)  NOT NULL                COMMENT '权限名称',
+    module      VARCHAR(20)  NOT NULL                COMMENT '所属模块',
+    create_time DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (perm_id),
+    UNIQUE KEY uk_perm_code (perm_code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '权限点表';
+
+CREATE TABLE user_role (
+    user_id INT UNSIGNED NOT NULL COMMENT '账号ID',
+    role_id INT UNSIGNED NOT NULL COMMENT '角色ID',
+    PRIMARY KEY (user_id, role_id),
+    KEY idx_user_role_role (role_id),
+    CONSTRAINT fk_user_role_user FOREIGN KEY (user_id) REFERENCES sys_user (user_id),
+    CONSTRAINT fk_user_role_role FOREIGN KEY (role_id) REFERENCES role (role_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '账号-角色关联';
+
+CREATE TABLE role_permission (
+    role_id INT UNSIGNED NOT NULL COMMENT '角色ID',
+    perm_id INT UNSIGNED NOT NULL COMMENT '权限ID',
+    PRIMARY KEY (role_id, perm_id),
+    KEY idx_role_perm_perm (perm_id),
+    CONSTRAINT fk_role_perm_role FOREIGN KEY (role_id) REFERENCES role (role_id),
+    CONSTRAINT fk_role_perm_perm FOREIGN KEY (perm_id) REFERENCES permission (perm_id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '角色-权限关联';
+
+INSERT INTO role (role_code, role_name, remark) VALUES
+('ADMIN', '系统管理员', '全部权限'),
+('HR',    '人事专员',   '员工、部门、考勤、薪资的读写'),
+('VIEWER','只读用户',   '仅查询，不能改动数据');
+
+INSERT INTO permission (perm_code, perm_name, module) VALUES
+('emp:read',   '查看员工', '员工'),
+('emp:write',  '维护员工', '员工'),
+('dept:read',  '查看部门', '部门'),
+('dept:write', '维护部门', '部门'),
+('att:read',   '查看考勤', '考勤'),
+('att:write',  '维护考勤', '考勤'),
+('sal:read',   '查看薪资', '薪资'),
+('sal:write',  '维护薪资', '薪资'),
+('user:read',  '查看账号', '账号'),
+('user:write', '维护账号', '账号'),
+('role:write', '维护角色权限', '权限'),
+('log:read',   '查看审计', '审计');
+-- 说明：权限点只允许对应「真实存在的校验」。分类/文章的权限点待相应模块实现时一并加入，
+-- 否则会出现「有权限点、无接口」的僵尸数据，分配界面里看着有、勾了毫无作用。
+
+-- 管理员拥有全部权限；hr01 只有人事相关；viewer01 只读
+INSERT INTO role_permission (role_id, perm_id)
+SELECT r.role_id, p.perm_id FROM role r CROSS JOIN permission p WHERE r.role_code = 'ADMIN';
+
+INSERT INTO role_permission (role_id, perm_id)
+SELECT r.role_id, p.perm_id FROM role r JOIN permission p
+  ON p.perm_code IN ('emp:read','emp:write','dept:read','dept:write','att:read','att:write','sal:read','sal:write')
+WHERE r.role_code = 'HR';
+
+INSERT INTO role_permission (role_id, perm_id)
+SELECT r.role_id, p.perm_id FROM role r JOIN permission p
+  ON p.perm_code IN ('emp:read','dept:read','att:read','sal:read','log:read')
+WHERE r.role_code = 'VIEWER';
+
+-- 示例账号：hr01 / viewer01，口令均为 123456
+INSERT INTO sys_user (username, password_hash, display_name, status, create_time) VALUES
+('hr01', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '人事专员', 1, '2026-01-01 00:00:00'),
+('viewer01', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '只读用户', 1, '2026-01-01 00:00:00');
+
+INSERT INTO user_role (user_id, role_id)
+SELECT u.user_id, r.role_id FROM sys_user u JOIN role r ON r.role_code = 'ADMIN' WHERE u.username = 'admin';
+INSERT INTO user_role (user_id, role_id)
+SELECT u.user_id, r.role_id FROM sys_user u JOIN role r ON r.role_code = 'HR' WHERE u.username = 'hr01';
+INSERT INTO user_role (user_id, role_id)
+SELECT u.user_id, r.role_id FROM sys_user u JOIN role r ON r.role_code = 'VIEWER' WHERE u.username = 'viewer01';
+
+SET FOREIGN_KEY_CHECKS = 1;

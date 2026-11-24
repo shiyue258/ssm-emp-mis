@@ -40,6 +40,8 @@ tags:
     description: 登录账号的增删改查与口令重置；口令以摘要存储且不随响应返回
   - name: 操作审计
     description: 写操作自动落库，只读查询；无任何写入接口
+  - name: 权限管理
+    description: 角色、权限点与账号角色分配；接口级鉴权由 AOP 切面完成
 
 security:
   - cookieAuth: []
@@ -853,6 +855,259 @@ paths:
                           total: { type: integer }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /me:
+    get:
+      tags: [权限管理]
+      summary: 当前登录人与权限集合
+      description: 权限实时查库；前端据此隐藏入口，但真正的拦截在服务端切面。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId: { type: integer }
+                          username: { type: string }
+                          displayName: { type: string }
+                          permissions:
+                            type: array
+                            items: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /roles:
+    get:
+      tags: [权限管理]
+      summary: 角色列表
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [权限管理]
+      summary: 新增角色
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleInput' }
+      responses:
+        '200':
+          description: 成功；编码重复返回业务失败
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Result' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [权限管理]
+      summary: 修改角色
+      description: 内置 ADMIN 的编码不可修改。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/RoleInput'
+                - type: object
+                  required: [roleId]
+                  properties:
+                    roleId: { type: integer }
+      responses:
+        '200':
+          description: 成功，或业务失败
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Result' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /roles/{id}:
+    get:
+      tags: [权限管理]
+      summary: 角色单条
+      parameters:
+        - $ref: '#/components/parameters/RoleId'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [权限管理]
+      summary: 删除角色
+      description: 内置 ADMIN 不可删；仍有账号绑定时拒绝。
+      parameters:
+        - $ref: '#/components/parameters/RoleId'
+      responses:
+        '200':
+          description: 成功，或业务失败
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Result' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /roles/permissions:
+    get:
+      tags: [权限管理]
+      summary: 全部权限点
+      description: 供分配界面渲染勾选框；权限点由种子数据维护，不提供增删接口。
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Permission' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /roles/{id}/permissions:
+    get:
+      tags: [权限管理]
+      summary: 角色已分配权限
+      parameters:
+        - $ref: '#/components/parameters/RoleId'
+      responses:
+        '200':
+          description: 权限 ID 数组
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [权限管理]
+      summary: 覆盖式分配权限
+      description: 请求体为权限 ID 数组，传空数组表示清空；保存后立即生效。
+      parameters:
+        - $ref: '#/components/parameters/RoleId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { type: integer }
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Result' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /roles/users/{id}:
+    get:
+      tags: [权限管理]
+      summary: 某账号的角色
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: 返回 userId 与 roleIds
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId: { type: integer }
+                          roleIds:
+                            type: array
+                            items: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users/{id}/roles:
+    get:
+      tags: [权限管理]
+      summary: 某账号的角色 ID 列表
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Result'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [权限管理]
+      summary: 覆盖式分配账号角色
+      description: 最后一个管理员不允许取消管理员角色。
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { type: integer }
+      responses:
+        '200':
+          description: 成功，或业务失败
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Result' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
 components:
   securitySchemes:
     cookieAuth:
@@ -891,6 +1146,12 @@ components:
       required: true
       description: 账号 ID
       schema: { type: integer, example: 1 }
+    RoleId:
+      name: id
+      in: path
+      required: true
+      description: 角色 ID
+      schema: { type: integer, example: 1 }
     PageNo:
       name: page
       in: query
@@ -903,6 +1164,16 @@ components:
       schema: { type: integer, default: 10, minimum: 1, maximum: 100 }
 
   responses:
+    Forbidden:
+      description: 已登录但缺少权限点（由 PermissionAspect 抛出）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Result'
+          example:
+            code: 403
+            message: 无权限执行该操作，需要：emp:write
+            data: null
     Unauthorized:
       description: 未登录或登录已失效
       content:
@@ -1184,6 +1455,33 @@ components:
         detail: { type: string, description: 成功记 success，失败记业务异常原文, example: 不能删除当前登录的账号 }
         result: { type: integer, enum: [0, 1], description: 1 成功 / 0 失败, example: 0 }
         createTime: { type: string, example: '2026-11-24 16:35:08' }
+
+    Role:
+      type: object
+      description: 角色。内置 ADMIN 不可删除，编码不可修改。
+      properties:
+        roleId: { type: integer, example: 1 }
+        roleCode: { type: string, example: ADMIN }
+        roleName: { type: string, example: 系统管理员 }
+        remark: { type: string, nullable: true }
+        createTime: { type: string, example: '2026-01-01 00:00:00' }
+
+    RoleInput:
+      type: object
+      required: [roleCode, roleName]
+      properties:
+        roleCode: { type: string, maxLength: 30, example: FINANCE }
+        roleName: { type: string, maxLength: 50, example: 财务专员 }
+        remark: { type: string, maxLength: 100, nullable: true }
+
+    Permission:
+      type: object
+      description: 权限点，编码形如 emp:write，与 @RequirePermission 取值一一对应。
+      properties:
+        permId: { type: integer, example: 2 }
+        permCode: { type: string, example: emp:write }
+        permName: { type: string, example: 维护员工 }
+        module: { type: string, example: 员工 }
 
     LoginDTO:
       type: object

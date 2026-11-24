@@ -1,6 +1,7 @@
 package com.lab.emp.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.lab.emp.common.RequirePermission;
 import com.lab.emp.common.Result;
 import com.lab.emp.dto.EmpQueryDTO;
 import com.lab.emp.entity.Emp;
@@ -43,6 +44,7 @@ public class EmpController {
     }
 
     /** 新增员工。 */
+    @RequirePermission("emp:write")
     @PostMapping
     public Result<Void> add(@RequestBody @Valid Emp emp) {
         empService.create(emp);
@@ -50,6 +52,7 @@ public class EmpController {
     }
 
     /** 修改员工信息。 */
+    @RequirePermission("emp:write")
     @PutMapping
     public Result<Void> update(@RequestBody @Valid Emp emp) {
         empService.update(emp);
@@ -57,6 +60,7 @@ public class EmpController {
     }
 
     /** 删除单条。 */
+    @RequirePermission("emp:write")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable("id") Integer id) {
         empService.remove(id);
@@ -64,12 +68,14 @@ public class EmpController {
     }
 
     /** 批量删除，返回实际影响的条数。 */
+    @RequirePermission("emp:write")
     @DeleteMapping
     public Result<Integer> deleteBatch(@RequestBody List<Integer> ids) {
         return Result.ok(empService.removeBatch(ids));
     }
 
     /** 单条查询。 */
+    @RequirePermission("emp:read")
     @GetMapping("/{id}")
     public Result<Emp> getById(@PathVariable("id") Integer id) {
         return Result.ok(empService.getById(id));
@@ -81,6 +87,7 @@ public class EmpController {
      * <p>查询参数直接绑定到 {@link EmpQueryDTO}，不写 {@code @RequestParam} 逐个接：
      * 后者在参数增多后签名会膨胀，且缺省值处理散落在方法体内。
      */
+    @RequirePermission("emp:read")
     @GetMapping
     public Result<Page<Emp>> page(EmpQueryDTO query) {
         return Result.ok(empService.pageQuery(query));

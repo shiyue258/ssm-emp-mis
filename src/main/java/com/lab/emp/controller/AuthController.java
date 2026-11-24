@@ -4,12 +4,16 @@ import com.lab.emp.common.LoginUser;
 import com.lab.emp.common.Result;
 import com.lab.emp.dto.LoginDTO;
 import com.lab.emp.service.AuthService;
+import com.lab.emp.service.PermissionService;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.servlet.http.HttpSession;
 import javax.validation.Valid;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 认证接口：登录、退出。
@@ -26,9 +30,11 @@ import javax.validation.Valid;
 public class AuthController {
 
     private final AuthService authService;
+    private final PermissionService permissionService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, PermissionService permissionService) {
         this.authService = authService;
+        this.permissionService = permissionService;
     }
 
     /**
@@ -55,5 +61,27 @@ public class AuthController {
     public Result<Void> logout(HttpSession session) {
         session.invalidate();
         return Result.ok();
+    }
+
+    /**
+     * 当前登录人与权限集合。
+     *
+     * <p>前端用它决定「哪些按钮该显示」。注意这只是**界面层的收敛**，
+     * 真正的拦截在服务端切面——隐藏按钮不等于限制调用，接口仍会校验。
+     * 每次请求实时查库，管理员改了角色后刷新页面即生效。
+     */
+    @GetMapping("/me")
+    public Result<Map<String, Object>> me(HttpSession session) {
+        Object value = session.getAttribute(LoginUser.SESSION_KEY);
+        if (!(value instanceof LoginUser)) {
+            throw new com.lab.emp.common.ForbiddenException("未登录");
+        }
+        LoginUser user = (LoginUser) value;
+        Map<String, Object> data = new LinkedHashMap<>(8);
+        data.put("userId", user.getUserId());
+        data.put("username", user.getUsername());
+        data.put("displayName", user.getDisplayName());
+        data.put("permissions", permissionService.codesOf(user.getUserId()));
+        return Result.ok(data);
     }
 }

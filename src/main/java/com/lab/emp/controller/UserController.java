@@ -2,6 +2,7 @@ package com.lab.emp.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lab.emp.common.LoginUser;
+import com.lab.emp.common.RequirePermission;
 import com.lab.emp.common.Result;
 import com.lab.emp.dto.PasswordResetDTO;
 import com.lab.emp.dto.UserCreateDTO;
@@ -32,11 +33,30 @@ import javax.validation.Valid;
 public class UserController {
 
     private final UserService userService;
+    private final com.lab.emp.service.RoleService roleService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, com.lab.emp.service.RoleService roleService) {
         this.userService = userService;
+        this.roleService = roleService;
     }
 
+    /** 某账号的角色 ID 列表。 */
+    @RequirePermission("user:read")
+    @GetMapping("/{id}/roles")
+    public Result<java.util.List<Integer>> rolesOf(@PathVariable("id") Integer id) {
+        return Result.ok(roleService.roleIdsOf(id));
+    }
+
+    /** 覆盖式分配角色：请求体为角色 ID 列表，传空数组表示清空。 */
+    @RequirePermission("role:write")
+    @PutMapping("/{id}/roles")
+    public Result<Void> assignRoles(@PathVariable("id") Integer id,
+                                    @RequestBody java.util.List<Integer> roleIds) {
+        roleService.assignRoles(id, roleIds);
+        return Result.ok();
+    }
+
+    @RequirePermission("user:read")
     @GetMapping
     public Result<Page<SysUser>> page(@RequestParam(required = false) String keyword,
                                       @RequestParam(required = false) Integer status,
@@ -45,23 +65,27 @@ public class UserController {
         return Result.ok(userService.page(keyword, status, page, size));
     }
 
+    @RequirePermission("user:read")
     @GetMapping("/{id}")
     public Result<SysUser> get(@PathVariable("id") Integer id) {
         return Result.ok(userService.getById(id));
     }
 
+    @RequirePermission("user:write")
     @PostMapping
     public Result<Void> create(@RequestBody @Valid UserCreateDTO dto) {
         userService.create(dto);
         return Result.ok();
     }
 
+    @RequirePermission("user:write")
     @PutMapping
     public Result<Void> update(@RequestBody @Valid UserUpdateDTO dto, HttpSession session) {
         userService.update(dto, currentUserId(session));
         return Result.ok();
     }
 
+    @RequirePermission("user:write")
     @PutMapping("/{id}/password")
     public Result<Void> resetPassword(@PathVariable("id") Integer id,
                                       @RequestBody @Valid PasswordResetDTO dto) {
@@ -69,6 +93,7 @@ public class UserController {
         return Result.ok();
     }
 
+    @RequirePermission("user:write")
     @DeleteMapping("/{id}")
     public Result<Void> remove(@PathVariable("id") Integer id, HttpSession session) {
         userService.remove(id, currentUserId(session));
