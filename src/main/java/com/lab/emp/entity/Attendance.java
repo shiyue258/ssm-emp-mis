@@ -7,8 +7,6 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import javax.validation.constraints.Max;
-import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import java.io.Serializable;
@@ -45,9 +43,13 @@ public class Attendance implements Serializable {
 
     private LocalTime checkOut;
 
-    @NotNull(message = "考勤状态不能为空")
-    @Min(value = 0, message = "考勤状态只能是 0-3")
-    @Max(value = 3, message = "考勤状态只能是 0-3")
+    /**
+     * 考勤状态：0 正常 / 1 迟到 / 2 早退 / 3 缺勤。
+     *
+     * <p>**由服务端根据打卡时间推导，不接受客户端传入。** 理由：状态是一份事实的结论，
+     * 让录入者手选会出现「09:35 打卡却标成正常」这类自相矛盾的数据，而月度出勤率
+     * 完全建立在这个字段上。推导规则见 {@code AttendanceServiceImpl#deriveStatus}。
+     */
     private Integer status;
 
     @Size(max = 100, message = "备注长度不能超过 100")

@@ -153,10 +153,15 @@ public class EmpServiceImpl implements EmpService {
         if (!StringUtils.hasText(dept)) {
             return;
         }
-        Long count = deptMapper.selectCount(new LambdaQueryWrapper<Dept>()
+        Dept existing = deptMapper.selectOne(new LambdaQueryWrapper<Dept>()
                 .eq(Dept::getDeptName, dept));
-        if (count == null || count == 0) {
+        if (existing == null) {
             throw new BusinessException("部门不存在：" + dept + "，请先在部门管理中创建");
+        }
+        // 停用部门不允许再接收新员工：否则「停用」只是个装饰字段，
+        // 列表里还挂着人，报表按部门汇总时也会把已撤销的部门算进去。
+        if (existing.getStatus() != null && existing.getStatus() != 1) {
+            throw new BusinessException("部门已停用，不能分配员工：" + dept);
         }
     }
 

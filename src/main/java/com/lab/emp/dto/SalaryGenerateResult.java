@@ -3,6 +3,7 @@ package com.lab.emp.dto;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 
 /**
  * 批量生成薪资的结果。
@@ -24,4 +25,12 @@ public class SalaryGenerateResult implements Serializable {
 
     /** 因已存在而跳过的条数。 */
     private int skipped;
+
+    /**
+     * 本次生成记录的考勤扣款合计。
+     *
+     * <p>单独回传这个数，是为了让调用方一眼看出「这批薪资里有多少是被考勤扣掉的」，
+     * 而不是逐条去读 deduction 相加——生成结果本身就是给人看的汇总。
+     */
+    private BigDecimal deductedTotal;
 }

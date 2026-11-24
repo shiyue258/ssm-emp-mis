@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -45,6 +46,10 @@ public class AttendanceServiceImpl implements AttendanceService {
     private static final int LATE = 1;
     private static final int EARLY = 2;
     private static final int ABSENT = 3;
+
+    /** 标准上下班时间，用于推导迟到/早退；真实系统应放到排班表里，本工程固定为 9:00–18:00。 */
+    private static final LocalTime WORK_START = LocalTime.of(9, 0);
+    private static final LocalTime WORK_END = LocalTime.of(18, 0);
 
     private final AttendanceMapper attendanceMapper;
     private final EmpMapper empMapper;
@@ -185,18 +190,22 @@ public class AttendanceServiceImpl implements AttendanceService {
     }
 
     /**
-     * 业务层校验，三条都是「不加就会出现难懂报错或脏数据」的场景：
+     * 业务层校验，并在校验过程中**推导考勤状态**（不接受客户端传入）。
      *
-     * <p>其一，员工必须存在。表上没有外键，不校验就能给一个不存在的 empId 登记考勤，
-     * 这条记录永远不会出现在任何人的考勤里，成了脏数据。
+     * <p>为什么状态要推导：它是对「打卡时间」这一事实的判定结论。若允许手选，
+     * 就会出现「09:35 打卡却标成正常」这类自相矛盾的数据，而月度出勤率、
+     * 薪资扣款都建立在这个字段上——一处手误，两处报表都错。
      *
-     * <p>其二，下班不能早于上班。数据库虽有 {@code chk_att_time} 兜底，但 CHECK 抛出的
-     * {@code DataIntegrityViolationException} 会落到全局兜底分支变成「系统繁忙」——
-     * 用户看到这句话根本不知道是自己把时间填反了。业务层拦一道能给出准确提示。
+     * <p>推导规则（{@code deriveStatus}）：两次打卡都为空 → 缺勤；上班晚于 09:00 →
+     * 迟到；下班早于 18:00 → 早退；其余 → 正常。同时成立时按迟到记，
+     * 因为迟到意味着未按时到岗，是更主要的问题。
      *
-     * <p>其三，打卡时间要与状态自洽：缺勤不该有打卡时间，正常/迟到/早退必须有。
-     * 少了这条，「状态正常但没打卡」的记录会混进库里，月度出勤天数照常累加，
-     * 统计结果看着对、实际没依据。
+     * <p>其余两条校验：
+     * <ul>
+     *   <li>员工必须存在——表上没有外键，不校验就能给不存在的 empId 登记考勤；</li>
+     *   <li>上下班要么都填、要么都不填，且下班不得早于上班——后者数据库有 CHECK 兜底，
+     *       但 CHECK 抛出的异常会变成「系统繁忙」，用户看不出是自己填反了。</li>
+     * </ul>
      */
     private void validate(Attendance attendance) {
         if (empMapper.selectById(attendance.getEmpId()) == null) {
@@ -204,16 +213,27 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
         boolean hasIn = attendance.getCheckIn() != null;
         boolean hasOut = attendance.getCheckOut() != null;
-        if (hasIn && hasOut && attendance.getCheckOut().isBefore(attendance.getCheckIn())) {
+        if (hasIn != hasOut) {
+            throw new BusinessException("上班与下班打卡时间必须同时填写，或同时留空");
+        }
+        if (hasIn && attendance.getCheckOut().isBefore(attendance.getCheckIn())) {
             throw new BusinessException("下班打卡时间不能早于上班打卡时间");
         }
-        if (attendance.getStatus() != null && attendance.getStatus() == ABSENT) {
-            if (hasIn || hasOut) {
-                throw new BusinessException("缺勤记录不应填写打卡时间");
-            }
-        } else if (!hasIn || !hasOut) {
-            throw new BusinessException("非缺勤记录必须同时填写上班与下班打卡时间");
+        attendance.setStatus(deriveStatus(attendance.getCheckIn(), attendance.getCheckOut()));
+    }
+
+    /** 由打卡时间推导状态；两个时间都为空表示缺勤。 */
+    private int deriveStatus(LocalTime checkIn, LocalTime checkOut) {
+        if (checkIn == null && checkOut == null) {
+            return ABSENT;
         }
+        if (checkIn != null && checkIn.isAfter(WORK_START)) {
+            return LATE;
+        }
+        if (checkOut != null && checkOut.isBefore(WORK_END)) {
+            return EARLY;
+        }
+        return NORMAL;
     }
 
     /** 同一员工同一天只能有一条记录，改记录时排除自身。 */

@@ -3,9 +3,12 @@ package com.lab.emp.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lab.emp.common.BusinessException;
+import com.lab.emp.common.SalaryRule;
 import com.lab.emp.dto.SalaryGenerateResult;
+import com.lab.emp.entity.Attendance;
 import com.lab.emp.entity.Emp;
 import com.lab.emp.entity.SalaryRecord;
+import com.lab.emp.mapper.AttendanceMapper;
 import com.lab.emp.mapper.EmpMapper;
 import com.lab.emp.mapper.SalaryRecordMapper;
 import com.lab.emp.service.SalaryService;
@@ -17,6 +20,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,10 +51,13 @@ public class SalaryServiceImpl implements SalaryService {
 
     private final SalaryRecordMapper salaryRecordMapper;
     private final EmpMapper empMapper;
+    private final AttendanceMapper attendanceMapper;
 
-    public SalaryServiceImpl(SalaryRecordMapper salaryRecordMapper, EmpMapper empMapper) {
+    public SalaryServiceImpl(SalaryRecordMapper salaryRecordMapper, EmpMapper empMapper,
+                             AttendanceMapper attendanceMapper) {
         this.salaryRecordMapper = salaryRecordMapper;
         this.empMapper = empMapper;
+        this.attendanceMapper = attendanceMapper;
     }
 
     @Override
@@ -95,6 +102,7 @@ public class SalaryServiceImpl implements SalaryService {
     @Transactional(rollbackFor = Exception.class)
     public SalaryGenerateResult generate(String month) {
         String normalized = normalizeMonth(month);
+        YearMonth ym = YearMonth.parse(normalized);
 
         // 在职员工：deleted = 0 由逻辑删除自动追加，这里只需状态过滤
         List<Emp> emps = empMapper.selectList(new LambdaQueryWrapper<Emp>()
@@ -108,30 +116,73 @@ public class SalaryServiceImpl implements SalaryService {
                         .eq(SalaryRecord::getMonth, normalized))
                 .stream().map(SalaryRecord::getEmpId).collect(Collectors.toSet());
 
+        // 一次查询取出该月考勤，按员工聚合出「缺勤天数 / 迟到次数 / 早退次数」。
+        // 这是「考勤 → 薪资」这条业务链的唯一接口点：薪资不再只看基本工资，
+        // 而是先根据考勤事实算扣款，再得出实发。
+        Map<Integer, int[]> attendanceStats = loadAttendanceStats(ym);
+
         int generated = 0;
         int skipped = 0;
+        BigDecimal deductedTotal = BigDecimal.ZERO;
         for (Emp emp : emps) {
             if (existing.contains(emp.getEmpId())) {
                 skipped++;
                 continue;
             }
+            BigDecimal base = scale(emp.getSalary());
+            int[] stats = attendanceStats.getOrDefault(emp.getEmpId(), new int[3]);
+            BigDecimal deduction = SalaryRule.deductionOf(base, stats[0], stats[1], stats[2]);
+            // 扣款不得超过应发：否则会出现负数工资，表上的 CHECK 也会拒绝
+            if (deduction.compareTo(base) > 0) {
+                deduction = base;
+            }
+
             SalaryRecord record = new SalaryRecord();
             record.setEmpId(emp.getEmpId());
             record.setMonth(normalized);
-            record.setBase(emp.getSalary());
+            record.setBase(base);
             record.setBonus(BigDecimal.ZERO);
-            record.setDeduction(BigDecimal.ZERO);
-            record.setTotal(scale(emp.getSalary()));
+            record.setDeduction(deduction);
+            record.setTotal(base.subtract(deduction));
             record.setStatus(PENDING);
             salaryRecordMapper.insert(record);
             generated++;
+            deductedTotal = deductedTotal.add(deduction);
         }
 
         SalaryGenerateResult result = new SalaryGenerateResult();
         result.setMonth(normalized);
         result.setGenerated(generated);
         result.setSkipped(skipped);
+        result.setDeductedTotal(deductedTotal);
         return result;
+    }
+
+    /**
+     * 按员工聚合当月考勤：返回 {缺勤天数, 迟到次数, 早退次数}。
+     *
+     * <p>只用一条查询取明细再在内存里聚合，而不是「每人查一次考勤」——
+     * 10 个员工那样做就是 10 条 SQL。
+     */
+    private Map<Integer, int[]> loadAttendanceStats(YearMonth ym) {
+        List<Attendance> records = attendanceMapper.selectList(new LambdaQueryWrapper<Attendance>()
+                .ge(Attendance::getWorkDate, ym.atDay(1))
+                .lt(Attendance::getWorkDate, ym.plusMonths(1).atDay(1)));
+
+        Map<Integer, int[]> stats = new HashMap<>();
+        for (Attendance a : records) {
+            int[] s = stats.computeIfAbsent(a.getEmpId(), k -> new int[3]);
+            if (a.getStatus() == null) {
+                continue;
+            }
+            switch (a.getStatus()) {
+                case 3: s[0]++; break;   // 缺勤
+                case 1: s[1]++; break;   // 迟到
+                case 2: s[2]++; break;   // 早退
+                default: break;
+            }
+        }
+        return stats;
     }
 
     @Override

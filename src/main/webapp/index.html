@@ -181,6 +181,10 @@
   tbody tr{transition:background .1s var(--ease)}
   tbody tr:hover{background:#fafcfb}
   tbody tr:last-child td{border-bottom:0}
+  /* 末列（操作）右侧吸附：窄屏横向滚动时按钮始终可见 */
+  th:last-child,td:last-child{position:sticky;right:0;background:var(--layer);box-shadow:-1px 0 0 var(--stroke)}
+  thead th:last-child{background:var(--layer-alt);z-index:2}
+  tbody tr:hover td:last-child{background:#fafcfb}
   td.actions{display:flex;gap:6px}
   .empty{padding:34px;text-align:center;color:var(--text-3);font-size:13px;
     border:1px dashed #e6e6e6;border-radius:var(--radius);margin:2px;background:var(--layer-alt)}
@@ -236,6 +240,9 @@
   @media (max-width: 1100px){
     nav.tabs button{padding:0 9px;font-size:13px}
     .toolbar .field input,.toolbar .field select{min-width:104px}
+    th,td{padding:8px 10px}
+    th:first-child,td:first-child{padding-left:12px}
+    th:last-child,td:last-child{padding-right:12px}
   }
   @media (max-width: 760px){
     header.app-bar{padding:0 10px;gap:8px;height:50px}
@@ -681,22 +688,15 @@ VIEWS.att = async function () {
         <div class="field"><label>上班</label><input name="checkIn" type="time" value="${(r.checkIn || '').slice(0, 5)}"></div>
         <div class="field"><label>下班</label><input name="checkOut" type="time" value="${(r.checkOut || '').slice(0, 5)}"></div>
       </div>
-      <div class="field"><label>状态</label>
-        <select name="status">
-          <option value="0" ${r.status === 0 ? 'selected' : ''}>正常</option>
-          <option value="1" ${r.status === 1 ? 'selected' : ''}>迟到</option>
-          <option value="2" ${r.status === 2 ? 'selected' : ''}>早退</option>
-          <option value="3" ${r.status === 3 ? 'selected' : ''}>缺勤（不填打卡时间）</option>
-        </select></div>
-      <div class="field"><label>备注</label><input name="remark" value="${esc(r.remark || '')}"></div>`;
+      <div class="field"><label>备注</label><input name="remark" value="${esc(r.remark || '')}"></div>
+      <p class="hint">状态由服务端按打卡时间推导：9:00 后到岗记迟到、18:00 前离岗记早退、不填时间记缺勤。</p>`;
   }
   function payload(fd) {
-    const s = Number(fd.get('status'));
-    const t = (v) => s === 3 ? null : (v || null);
+    const i = fd.get('checkIn') || null;
+    const o = fd.get('checkOut') || null;
     return {
       empId: Number(fd.get('empId')), workDate: fd.get('workDate'),
-      checkIn: t(fd.get('checkIn')), checkOut: t(fd.get('checkOut')),
-      status: s, remark: fd.get('remark') || null
+      checkIn: i, checkOut: o, remark: fd.get('remark') || null
     };
   }
 
@@ -819,7 +819,8 @@ VIEWS.sal = async function () {
     if (!m) { toast('请先选择月份', true); return; }
     try {
       const r = await api('/salaries/generate?month=' + encodeURIComponent(m), { method: 'POST' });
-      toast(`生成 ${r.generated} 条，跳过 ${r.skipped} 条（当月已存在）`);
+      const ded = Number(r.deductedTotal || 0);
+      toast(`生成 ${r.generated} 条，跳过 ${r.skipped} 条；按考勤扣款合计 ¥${ded.toFixed(2)}`);
       load();
     } catch (e) { toast(e.message, true); }
   };
