@@ -158,14 +158,63 @@ public class SalaryServiceImpl implements SalaryService {
         return result;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SalaryGenerateResult recalculate(String month) {
+        String normalized = normalizeMonth(month);
+        YearMonth ym = YearMonth.parse(normalized);
+
+        List<SalaryRecord> records = salaryRecordMapper.selectList(new LambdaQueryWrapper<SalaryRecord>()
+                .eq(SalaryRecord::getMonth, normalized));
+        if (records.isEmpty()) {
+            throw new BusinessException("该月还没有薪资记录，请先生成：" + normalized);
+        }
+
+        Map<Integer, int[]> attendanceStats = loadAttendanceStats(ym);
+
+        int recalculated = 0;
+        int skipped = 0;
+        BigDecimal deductedTotal = BigDecimal.ZERO;
+        for (SalaryRecord record : records) {
+            if (record.getStatus() != null && record.getStatus() == PAID) {
+                skipped++;
+                continue;
+            }
+            int[] stats = attendanceStats.getOrDefault(record.getEmpId(), new int[3]);
+            BigDecimal base = scale(record.getBase());
+            BigDecimal bonus = scale(record.getBonus());
+            BigDecimal deduction = SalaryRule.deductionOf(base, stats[0], stats[1], stats[2]);
+            if (deduction.compareTo(base) > 0) {
+                deduction = base;
+            }
+
+            SalaryRecord update = new SalaryRecord();
+            update.setId(record.getId());
+            update.setBase(base);
+            update.setBonus(bonus);
+            update.setDeduction(deduction);
+            update.setTotal(base.add(bonus).subtract(deduction));
+            salaryRecordMapper.updateById(update);
+
+            recalculated++;
+            deductedTotal = deductedTotal.add(deduction);
+        }
+
+        SalaryGenerateResult result = new SalaryGenerateResult();
+        result.setMonth(normalized);
+        result.setGenerated(recalculated);
+        result.setSkipped(skipped);
+        result.setDeductedTotal(deductedTotal);
+        return result;
+    }
+
     /**
      * 按员工聚合当月考勤：返回 {缺勤天数, 迟到次数, 早退次数}。
      *
      * <p>只用一条查询取明细再在内存里聚合，而不是「每人查一次考勤」——
      * 10 个员工那样做就是 10 条 SQL。
      */
-    private Map<Integer, int[]> loadAttendanceStats(YearMonth ym) {
-        List<Attendance> records = attendanceMapper.selectList(new LambdaQueryWrapper<Attendance>()
+    private Map<Integer, int[]> loadAttendanceStats(YearMonth ym) {        List<Attendance> records = attendanceMapper.selectList(new LambdaQueryWrapper<Attendance>()
                 .ge(Attendance::getWorkDate, ym.atDay(1))
                 .lt(Attendance::getWorkDate, ym.plusMonths(1).atDay(1)));
 

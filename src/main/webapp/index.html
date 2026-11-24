@@ -742,6 +742,8 @@ VIEWS.sal = async function () {
         <div class="field"><label>员工 ID</label><input id="sEmp" type="number" placeholder="不限"></div>
         <div class="field"><label>月份</label><input id="sMonth" type="month" value="${now}"></div>
         <button class="btn" id="sSearch">查询</button>
+        <div class="divider-v"></div>
+        <button class="btn" id="sRecalc" title="按当前考勤重算待发放记录，已发放的跳过">重算本月</button>
         <div class="spacer"></div>
         <button class="btn btn-primary" id="sGen">按月生成</button>
       </div>
@@ -821,6 +823,17 @@ VIEWS.sal = async function () {
       const r = await api('/salaries/generate?month=' + encodeURIComponent(m), { method: 'POST' });
       const ded = Number(r.deductedTotal || 0);
       toast(`生成 ${r.generated} 条，跳过 ${r.skipped} 条；按考勤扣款合计 ¥${ded.toFixed(2)}`);
+      load();
+    } catch (e) { toast(e.message, true); }
+  };
+  $('#sRecalc').onclick = async () => {
+    const m = $('#sMonth').value;
+    if (!m) { toast('请先选择月份', true); return; }
+    if (!confirm('按当前考勤重算待发放记录？手工调整过的扣款会被覆盖，已发放的不受影响。')) return;
+    try {
+      const r = await api('/salaries/recalculate?month=' + encodeURIComponent(m), { method: 'POST' });
+      const ded = Number(r.deductedTotal || 0);
+      toast(`重算 ${r.generated} 条，跳过已发放 ${r.skipped} 条；扣款合计 ¥${ded.toFixed(2)}`);
       load();
     } catch (e) { toast(e.message, true); }
   };

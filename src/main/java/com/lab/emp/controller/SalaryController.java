@@ -51,6 +51,12 @@ public class SalaryController {
         return Result.ok(salaryService.generate(month));
     }
 
+    /** 按当前考勤重算待发放记录；已发放的跳过。 */
+    @PostMapping("/recalculate")
+    public Result<SalaryGenerateResult> recalculate(@RequestParam String month) {
+        return Result.ok(salaryService.recalculate(month));
+    }
+
     @PutMapping
     public Result<Void> update(@RequestBody @Valid SalaryRecord record) {
         if (record.getId() == null) {

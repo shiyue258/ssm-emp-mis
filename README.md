@@ -17,7 +17,7 @@
 | 容器 | Tomcat 9.0.x（`javax.servlet` 4.0 命名空间） |
 | 打包 | `war`，全注解整合、**无 `web.xml`** |
 | 版本 | `v1.1.0`：新增列表排序（白名单防注入）与字段自动填充；相对 `v1.0.1` 累计 6 条提交 |
-| 状态 | 🚧 **功能已齐**：员工 / 部门 / 账号 / 考勤 / 薪资五个业务域 + 操作审计 + 单页管理界面；文档总校待下一次提交 |
+| 状态 | ✅ **已完成**：36 个接口（健康 2 / 认证 2 / 员工 6 / 部门 6 / 考勤 6 / 薪资 7 / 账号 6 / 审计 1）、77 条接口用例、4 个 JUnit 用例、单页管理界面，已在 Tomcat 9 + JDK 17 上端到端验证 |
 
 > 标注口径：`✅` 表示仓库里真实存在且已跑通，`⬜` 表示尚未开始。
 
@@ -164,6 +164,26 @@
 | 12 | PUT | `/depts` | 修改部门（改名时级联刷新员工所属部门） | ✅ 已实现 |
 | 13 | DELETE | `/depts/{id}` | 删除部门（部门下有员工时拒绝） | ✅ 已实现 |
 | 14 | GET | `/depts/{id}/employees` | 该部门下的员工列表 | ✅ 已实现 |
+| 15 | GET | `/attendance` | 考勤分页（`empId` / `month`） | ✅ 已实现 |
+| 16 | GET | `/attendance/{id}` | 考勤单条 | ✅ 已实现 |
+| 17 | POST | `/attendance` | 登记考勤（状态由打卡时间推导） | ✅ 已实现 |
+| 18 | PUT | `/attendance` | 修改考勤（时间改动后状态重算） | ✅ 已实现 |
+| 19 | DELETE | `/attendance/{id}` | 删除考勤 | ✅ 已实现 |
+| 20 | GET | `/attendance/summary` | 月度汇总（按人出勤率） | ✅ 已实现 |
+| 21 | GET | `/salaries` | 薪资分页（`empId` / `month`） | ✅ 已实现 |
+| 22 | GET | `/salaries/{id}` | 薪资单条 | ✅ 已实现 |
+| 23 | POST | `/salaries/generate` | 按月批量生成（幂等） | ✅ 已实现 |
+| 24 | POST | `/salaries/recalculate` | 按当前考勤重算待发放记录 | ✅ 已实现 |
+| 25 | PUT | `/salaries` | 调整奖金/扣款，实发重算 | ✅ 已实现 |
+| 26 | PUT | `/salaries/{id}/pay` | 标记发放（单向） | ✅ 已实现 |
+| 27 | DELETE | `/salaries/{id}` | 删除待发放记录 | ✅ 已实现 |
+| 28 | GET | `/users` | 账号分页（不返回摘要） | ✅ 已实现 |
+| 29 | GET | `/users/{id}` | 账号单条 | ✅ 已实现 |
+| 30 | POST | `/users` | 新增账号 | ✅ 已实现 |
+| 31 | PUT | `/users` | 改显示名与启停 | ✅ 已实现 |
+| 32 | PUT | `/users/{id}/password` | 重置口令 | ✅ 已实现 |
+| 33 | DELETE | `/users/{id}` | 删除账号（两道防护） | ✅ 已实现 |
+| 34 | GET | `/op-logs` | 操作审计查询（只读） | ✅ 已实现 |
 
 > 第 7、8 条是指导书「登录权限拦截」的配套实现——没有登录入口就无法演示 401，故单列。
 >
@@ -349,7 +369,7 @@ CREATE TABLE dept (
 
 | 方案 | 代价 |
 | :--- | :--- |
-| 加 `emp.dept_id` 外键 | 更规范，但要改 `emp` 表、六个员工接口、47 条用例与 `openapi.yaml` |
+| 加 `emp.dept_id` 外键 | 更规范，但要改 `emp` 表、六个员工接口、77 条用例与 `openapi.yaml` |
 | **按名称关联（当前）** | 零改动；代价是部门改名必须级联刷新 `emp.dept`，否则关联断裂 |
 
 选了后者，并用两处代码把这个代价兜住：
@@ -527,6 +547,8 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 | 字段自动填充 | ✅ INSERT 语句含 `create_time, update_time`；UPDATE 的 SET 子句含 `update_time`（改前由数据库 `ON UPDATE` 兜底，不出现在 SQL 里） |
 | 列表排序参数 | ✅ `sortBy` 白名单（empId / empName / salary / hireDate）+ `sortDir`；注入尝试 `sortBy=empName;drop table emp--` 回落默认且表完好；默认排序未变 |
 | 部门模块 | ✅ 13 个场景通过：列表 6 条、名称过滤、单条、不存在、该部门 4 名员工、新增、重名拒绝、空名拒绝、改名级联（4 条员工同步、旧名 0 残留）、有员工拒删、空部门可删、改回复原 |
+| 考勤 → 薪资联动 | ✅ 考勤状态由打卡时间推导（9:00/18:00 为界）；薪资生成扣款与考勤一致（缺勤 1 天 + 迟到 2 + 早退 1 → 扣 418.62，全勤为 0）；`recalculate` 可把补录的考勤补算进待发放记录 |
+| 停用部门 | ✅ 分配员工返回「部门已停用，不能分配员工」 |
 
 ### 5.6 事务失效三场景实验
 
@@ -595,7 +617,7 @@ cp target/ssm-emp-mis.war ~/opt/apache-tomcat-9.0.123/webapps/ROOT.war
 - [x] **任务 5** 分页多条件查询 + RESTful 六接口，已用 curl 逐条验证
 - [x] **任务 6（部分）** 登录拦截（`sys_user` + `LoginInterceptor` + `/login`、`/logout`）与 AOP 请求日志，401/口令打码已验证
 - [x] **任务 6（剩余）** 声明式事务验证 + **事务失效三场景实验**（吞异常 / 自调用 / private 方法），4 个 JUnit 用例全绿
-- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 47 条，实际结果均为实测
+- [x] **任务 7-1** 接口用例集：`docs/test-cases.md` 77 条，实际结果均为实测
 - [x] **任务 7-2** 企业开发规范清单：`docs/engineering-checklist.md` 29 条，另列 4 项未做到
 - [x] **任务 7-3** Git tag：`v1.0.0` → `v1.0.1` → `v1.1.0`，均为附注 tag 并已推送
 - [ ] **任务 7-4（外部动作）** ApiFox 录入与导出：用例文档已就绪，需在客户端逐条录入后导出测试记录
@@ -689,6 +711,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-24 | 新增单页管理界面 `src/main/webapp/index.html`（原生 HTML/CSS/fetch，零外部依赖）：顶栏横向导航、六页面、分页筛选与弹窗表单；`SpringMvcConfig` 增加 `/` 转发与静态资源放行，接口仍受登录拦截保护 |
 | 2026-11-24 | 修复三处衔接与协议问题：员工写入校验部门是否存在于 `dept` 表；考勤/薪资列表补 `empName`（批量回填）；缺参数与不支持的 Content-Type 分别返回 400/415，并发唯一键冲突提示「请勿重复提交」 |
 | 2026-11-24 | 打通「考勤 → 薪资」：考勤状态改由打卡时间推导（客户端传值忽略），薪资生成时按缺勤/迟到/早退计算扣款，规则集中在 `SalaryRule`；停用部门不再允许分配员工；种子数据与推导规则对齐 |
+| 2026-11-24 | 新增 `POST /salaries/recalculate`：补录考勤后可重算待发放记录，已发放跳过；文档总校——`api.md` 补 4 章 19 个接口，`openapi.yaml` 扩到 21 路径 36 操作，`test-cases.md` 扩到 77 条（9 组），README 计数与交付文档描述同步 |
 
 ---
 
@@ -697,9 +720,9 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 文档 | 内容 |
 | :--- | :--- |
 | [docs/architecture.md](docs/architecture.md) | 整体结构图、父子容器边界、一次请求的完整链路、组件清单、分层原则 |
-| [docs/api.md](docs/api.md) | 10 个端点的请求/响应示例、状态码与错误码约定、调用顺序示例 |
-| [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，可导入 ApiFox / Postman 生成接口树 |
-| [docs/test-cases.md](docs/test-cases.md) | 47 条接口用例，含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
+| [docs/api.md](docs/api.md) | 36 个接口的请求/响应示例、状态码与错误码约定、调用顺序示例 |
+| [docs/openapi.yaml](docs/openapi.yaml) | OpenAPI 3.0.3 规范，21 条路径 36 个操作，可导入 ApiFox / Postman 生成接口树 |
+| [docs/test-cases.md](docs/test-cases.md) | 77 条接口用例（9 个分组），含预期与实际结果对照，附本轮发现并修复的缺陷分析 |
 | [docs/engineering-checklist.md](docs/engineering-checklist.md) | 29 条开发规范逐条对照，附「未做到的部分」4 项 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 9 条实测故障的「现象 → 根因 → 处理」记录 |
 
