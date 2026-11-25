@@ -86,14 +86,16 @@
 2. **CharacterEncodingFilter** 设置请求/响应编码为 UTF-8（`forceEncoding = true`，请求体也强制按 UTF-8 解析）；
 3. **DispatcherServlet** 查 `HandlerMapping`，定位到 `EmpController#page`；
 4. **LoginInterceptor#preHandle** 检查 session 中的 `loginUser`，存在则放行，不存在直接写 401 并中断；
-5. **WebLogAspect#logAround** 打印 `[REQ]` 与入参；
-6. **参数绑定**：`page` / `size` / `name` / `gender` / `dept` 绑定到 `EmpQueryDTO`；
-7. **Controller** 调 `EmpService#pageQuery`；
-8. **Service** 用 `LambdaQueryWrapper` 拼条件，`Page` 承载分页参数；
-9. **Mapper** 由 MyBatis-Plus 注入，自动追加 `deleted = 0`（`@TableLogic`），分页插件改写 SQL 为 `LIMIT`；
-10. **Druid** 从连接池取连接执行；
-11. 结果逐层返回，`MappingJackson2HttpMessageConverter` 序列化为 JSON；
-12. **WebLogAspect** 打印 `[RESP]` 与耗时。
+5. **PermissionInterceptor#preHandle** 读处理器方法上的 `@RequirePermission`，查库判定权限；
+   不足则抛 `ForbiddenException` → 403。这一步**在参数解析之前**，因此越权请求不会先看到字段校验信息；
+6. **参数绑定**：`page` / `size` / `name` / `gender` / `dept` 绑定到 `EmpQueryDTO`，`@Valid` 在此校验；
+7. **WebLogAspect#logAround** 打印 `[REQ]` 与入参；
+8. **Controller** 调 `EmpService#pageQuery`（`PermissionAspect` 兜底：拦截器已置标记时直接放行，不重复查库）；
+9. **Service** 用 `LambdaQueryWrapper` 拼条件，`Page` 承载分页参数；
+10. **Mapper** 由 MyBatis-Plus 注入，自动追加 `deleted = 0`（`@TableLogic`），分页插件改写 SQL 为 `LIMIT`；
+11. **Druid** 从连接池取连接执行；
+12. 结果逐层返回，`MappingJackson2HttpMessageConverter` 序列化为 JSON；
+13. **WebLogAspect** 打印 `[RESP]` 与耗时。
 
 写操作（`POST` / `PUT` / `DELETE`）在第 7 步进入 `@Transactional` 方法，事务边界覆盖到第 10 步结束。
 
@@ -103,7 +105,7 @@
 | :--- | :--- | :--- | :--- |
 | `WebLogAspect` | 控制台日志 | 无 | 入参、耗时、异常（口令打码） |
 | `AuditAspect` | `op_log` 表 | `REQUIRES_NEW` 独立事务 | 操作人、方法、路径、结果；失败也落库 |
-| `PermissionAspect` | 无（拦截） | 无 | 校验 `@RequirePermission`；不足返回 403 |
+| `PermissionAspect` | 无（拦截） | 无 | 校验 `@RequirePermission`；不足返回 403。拦截器已判过时直接放行 |
 
 独立事务是必须的：若共用业务事务，业务回滚会把「这次操作失败了」的记录一起滚掉，而失败恰恰最需要留痕。
 
@@ -130,7 +132,7 @@
 | 模型 | `Emp` / `Dept` / `SysUser` / `Attendance` / `SalaryRecord` / `SalaryStandard` / `OpLog` | 表映射，均带 JSR-303 |
 | 公共 | `Result` / `BusinessException` / `GlobalExceptionHandler` | 统一返回与九类异常出口 |
 | 公共 | `PasswordEncoder` / `SalaryRule` | 口令摘要；日薪与扣款规则（单一出处） |
-| 横切 | `LoginInterceptor` / `WebLogAspect` / `AuditAspect` / `PermissionAspect` | 登录校验、请求日志、操作审计、接口鉴权 |
+| 横切 | `LoginInterceptor` / `PermissionInterceptor` / `WebLogAspect` / `AuditAspect` / `PermissionAspect` | 登录校验、参数解析前鉴权、请求日志、操作审计、鉴权兜底 |
 | 前端 | `webapp/index.html` | 单页界面，原生 fetch 调接口，零外部依赖 |
 
 ## 五、分层原则

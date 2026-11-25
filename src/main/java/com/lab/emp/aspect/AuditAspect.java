@@ -26,11 +26,15 @@ import javax.servlet.http.HttpSession;
  * 若只记成功，失败的操作就完全消失了。
  *
  * <p><b>覆盖边界</b>：本切面织入的是 Controller 方法调用，而参数校验
- * （{@code @Valid} 触发的 {@code MethodArgumentNotValidException}）发生在方法体执行
- * <b>之前</b>，切面看不到，因此校验失败不会进审计表。这里是有意接受的：校验失败意味着
- * 数据根本没进业务层，不存在被改动的可能；控制台日志仍有 {@code [REQ]} 记录可查。
- * 若要求「所有被拒绝的写请求都留痕」，就得把审计从 AOP 移到 HandlerInterceptor，
- * 代价是拿不到异常类型，只能记结果码。
+ * （{@code @Valid} 触发的 {@code MethodArgumentNotValidException}）与权限前置拦截
+ * （{@code PermissionInterceptor#preHandle}）都发生在方法体执行<b>之前</b>，切面看不到。
+ * 两者处理不同：
+ * <ul>
+ *   <li>参数校验失败：不进审计表。数据根本没进业务层，不存在被改动的可能；
+ *       控制台日志仍有 {@code [REQ]} 可查。这是有意接受的取舍。</li>
+ *   <li>越权写操作：由 {@code PermissionInterceptor} 自行补一条审计（结果=失败，
+ *       详情写明缺哪个权限），审计表里仍能查到「谁试图改、被拒了」。</li>
+ * </ul>
  *
  * <p>为什么 {@code /login} 也会被记：登录属于 POST，切点会命中。这其实是好事——
  * 登录失败同样值得留痕。操作人在 {@code proceed()} 之后重取一次：登录成功时

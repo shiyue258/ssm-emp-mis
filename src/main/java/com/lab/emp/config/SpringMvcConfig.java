@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import com.lab.emp.interceptor.LoginInterceptor;
+import com.lab.emp.interceptor.PermissionInterceptor;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
@@ -37,12 +38,22 @@ import java.util.List;
  * <p>扫描范围除 controller 外还包含 aspect：切面组件必须与它要代理的目标
  * 处于同一个容器，否则同样不生效。根容器侧已通过正则过滤排除 aspect 包，
  * 避免同一个切面被两个容器各实例化一次。
+ *
+ * <p>拦截器包只在此处扫描：{@code PermissionInterceptor} 需要注入
+ * {@code PermissionService}（根容器的 Bean），作为子容器的组件才能拿到完整的
+ * 依赖链；根容器侧已排除该包，避免出现第二个实例。
  */
 @Configuration
 @EnableWebMvc
 @EnableAspectJAutoProxy
-@ComponentScan({"com.lab.emp.controller", "com.lab.emp.aspect"})
+@ComponentScan({"com.lab.emp.controller", "com.lab.emp.aspect", "com.lab.emp.interceptor"})
 public class SpringMvcConfig implements WebMvcConfigurer {
+
+    private final PermissionInterceptor permissionInterceptor;
+
+    public SpringMvcConfig(PermissionInterceptor permissionInterceptor) {
+        this.permissionInterceptor = permissionInterceptor;
+    }
 
     /**
      * 静态资源交给容器默认 Servlet 处理。
@@ -119,7 +130,7 @@ public class SpringMvcConfig implements WebMvcConfigurer {
     }
 
     /**
-     * 注册登录拦截器。
+     * 注册登录拦截器与权限拦截器。
      *
      * <p>放行名单里必须包含 {@code /login}：否则「未登录不能访问」会把登录接口本身
      * 也拦掉，形成死锁。{@code /health} 两条同样放行——它们是给运维和部署脚本用的
@@ -127,6 +138,9 @@ public class SpringMvcConfig implements WebMvcConfigurer {
      *
      * <p>没有放行 {@code /logout}：退出操作本身就要求已登录，
      * 未登录时调用返回 401 是合理语义。
+     *
+     * <p>顺序不能颠倒：先判「有没有登录」，再判「能不能做这件事」。
+     * 反过来的话，未登录请求会因为查不到用户而走到权限分支，报出的原因就不准确。
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -136,5 +150,10 @@ public class SpringMvcConfig implements WebMvcConfigurer {
                 // 页面本身不含数据，数据一律由受保护的接口提供，因此放行是安全的。
                 .excludePathPatterns("/login", "/health", "/health/db",
                         "/", "/index.html", "/favicon.ico");
+
+        // 权限前置校验：让越权请求在参数解析（含 @Valid）之前就拿到 403。
+        // 无需单独配置放行名单——没有 @RequirePermission 的处理器会被直接跳过。
+        registry.addInterceptor(permissionInterceptor)
+                .addPathPatterns("/**");
     }
 }

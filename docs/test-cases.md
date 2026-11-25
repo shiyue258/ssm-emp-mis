@@ -154,7 +154,7 @@
 | P01 | admin 登录 | `GET /me` | 12 个权限点（ADMIN 全量） | 12 | ✅ |
 | P02 | hr01 登录 | `GET /me` | 8 个权限点 | 8 | ✅ |
 | P03 | viewer01 登录 | `GET /me` | 5 个只读权限 | 5 | ✅ |
-| P04 | viewer01 | `POST /emps` | 403，提示需要 `emp:write` | 403 + `无权限执行该操作，需要：emp:write` | ✅ |
+| P04 | viewer01 | `POST /emps`（**含不完整载荷**，故意缺 `dept`） | 403，提示需要 `emp:write`；不应先暴露字段校验信息 | 403 + `无权限执行该操作，需要：emp:write`（修复前先返回「所属部门不能为空」） | ✅ |
 | P05 | hr01 | `GET /roles` | 403（缺 `role:write`） | 403 | ✅ |
 | P06 | hr01 | `POST /emps` | 200（有 `emp:write`） | 200 | ✅ |
 | P07 | admin 清空 HR 角色权限后，hr01 `GET /emps` | — | 立即 403 | 403 | ✅ |
@@ -164,6 +164,8 @@
 | P10 | admin | `PUT /users/1/roles` 改为仅 VIEWER | `这是最后一个管理员账号，不能取消其管理员角色` | 与预期一致；角色仍为 `[1]` | ✅ |
 
 > P07/P08 是本组重点：证明授权**实时生效**，不依赖重新登录。若把权限缓存在会话里，撤权后仍能访问，这是权限系统里最危险的错误方向。
+>
+> P04 的「不完整载荷」是回归时补的：`@Valid` 在 HandlerAdapter 解析参数阶段执行，早于 Controller 方法调用，也就早于 `PermissionAspect`。只用切面时，越权请求会先拿到字段校验信息（数据不会写入，但等于免费探测字段规则）。修复方式是加 `PermissionInterceptor`，在参数解析前按同一个 `@RequirePermission` 注解判定；切面保留作兜底，同一请求内通过 request 标记避免重复查库。
 
 ---
 

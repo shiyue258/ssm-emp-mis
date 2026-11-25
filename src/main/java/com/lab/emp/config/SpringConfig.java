@@ -31,6 +31,9 @@ import javax.sql.DataSource;
  *       子容器一份，表现是「Service 注入为 null」或「拦截器不生效」；</li>
  *   <li><b>排除 {@code aspect} 包</b>：切面必须与它代理的 Controller 同处子容器才生效，
  *       留在根容器里只会多出一个不工作的实例；</li>
+ *   <li><b>排除 {@code interceptor} 包</b>：{@code PermissionInterceptor} 是子容器组件，
+ *       若被根容器再扫一次，会多出一个持有根容器 {@code PermissionService} 的实例，
+ *       虽然不致命，但两个容器各一份拦截器实例会让「标记写在哪份」变得难以推理；</li>
  *   <li><b>排除 {@link SpringMvcConfig}</b>：它本身也是 {@code @Configuration}，
  *       同样会被组件扫描命中。若不清除，根容器会照着 {@code @EnableWebMvc}
  *       再建一整套 HandlerMapping / HandlerAdapter——Web 环境下因为有
@@ -44,6 +47,7 @@ import javax.sql.DataSource;
         excludeFilters = {
                 @ComponentScan.Filter(type = FilterType.ANNOTATION, classes = Controller.class),
                 @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.lab\\.emp\\.aspect\\..*"),
+                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "com\\.lab\\.emp\\.interceptor\\..*"),
                 @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = SpringMvcConfig.class)
         })
 @PropertySource("classpath:jdbc.properties")

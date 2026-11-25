@@ -70,11 +70,17 @@ AID=$($MYSQL -e "select att_id from ssm_emp.attendance where emp_id=7 and work_d
 printf "T04 同人同日重复   : "; curl -sS -b "$J" -X POST "$B/attendance" -H 'Content-Type: application/json' -d '{"empId":7,"workDate":"2026-11-04","status":0}' | jq -c '{code,message}'
 printf "T05 时间倒挂       : "; curl -sS -b "$J" -X POST "$B/attendance" -H 'Content-Type: application/json' -d '{"empId":7,"workDate":"2026-11-06","checkIn":"18:00:00","checkOut":"09:00:00","status":0}' | jq -c '{code,message}'
 printf "T06 员工不存在     : "; curl -sS -b "$J" -X POST "$B/attendance" -H 'Content-Type: application/json' -d '{"empId":999,"workDate":"2026-11-06","status":0}' | jq -c '{code,message}'
-printf "T07 非法状态       : "; curl -sS -b "$J" -X POST "$B/attendance" -H 'Content-Type: application/json' -d '{"empId":7,"workDate":"2026-11-06","status":5}' | jq -c '{code,message}'
+# status 由服务端按打卡时间推导（见 AttendanceServiceImpl#deriveStatus），
+# 客户端传 5 会被忽略：不填打卡时间 + 日期已过 → 入库 status=3（缺勤）。
+# 这条记录在 T11 删除，避免脚本反复执行后残留考勤数据。
+printf "T07 状态服务端推导 : "; curl -sS -b "$J" -X POST "$B/attendance" -H 'Content-Type: application/json' -d '{"empId":7,"workDate":"2026-11-06","status":5}' | jq -c '{code,message}'
+printf "    入库 status       : "; $MYSQL -e "select concat('status=',status) from ssm_emp.attendance where emp_id=7 and work_date='2026-11-06';" 2>/dev/null
 printf "T08 修改           : "; curl -sS -b "$J" -X PUT "$B/attendance" -H 'Content-Type: application/json' -d "{\"attId\":$AID,\"empId\":7,\"workDate\":\"2026-11-04\",\"checkIn\":\"09:00:00\",\"checkOut\":\"18:30:00\",\"status\":0,\"remark\":\"加班\"}" | jq -c '{code}'
 printf "    复查           : "; curl -sS -b "$J" "$B/attendance/$AID" | jq -c '{out:.data.checkOut,remark:.data.remark}'
 printf "T09 删除           : "; curl -sS -b "$J" -X DELETE "$B/attendance/$AID" | jq -c '{code}'
 printf "T10 非法月份       : "; curl -sS -b "$J" -G "$B/attendance/summary" -d month=2026-13 | jq -c '{code,message}'
+T7ID=$($MYSQL -e "select att_id from ssm_emp.attendance where emp_id=7 and work_date='2026-11-06';" 2>/dev/null | tr -d ' ')
+printf "T11 清理 T07 残留   : "; curl -sS -b "$J" -X DELETE "$B/attendance/$T7ID" | jq -c '{code}'
 
 echo
 echo "########## 六、薪资 ##########"

@@ -3,6 +3,7 @@ package com.lab.emp.aspect;
 import com.lab.emp.common.ForbiddenException;
 import com.lab.emp.common.LoginUser;
 import com.lab.emp.common.RequirePermission;
+import com.lab.emp.interceptor.PermissionInterceptor;
 import com.lab.emp.service.PermissionService;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -28,6 +29,11 @@ import java.lang.reflect.Method;
  * 校验不通过抛 {@link ForbiddenException}，由全局异常处理器转成 HTTP 403。
  *
  * <p>权限每次查库、不缓存在会话里：撤权要立即生效，缓存会导致「已撤权但还能用」。
+ *
+ * <p><b>与 {@code PermissionInterceptor} 的关系。</b>拦截器在参数解析前先判一次，
+ * 让越权请求在 {@code @Valid} 校验之前就拿到 403（否则未授权方能读到字段校验信息）；
+ * 本切面负责兜底，覆盖不经过 MVC 链路的调用。拦截器校验通过后会在 request 上留标记，
+ * 切面见到标记直接放行，同一请求不重复查库。
  */
 @Aspect
 @Component
@@ -45,6 +51,15 @@ public class PermissionAspect {
         Method method = signature.getMethod();
         RequirePermission required = method.getAnnotation(RequirePermission.class);
         if (required == null) {
+            return joinPoint.proceed();
+        }
+
+        // 拦截器已在参数解析前判过权限：同一请求内不再重复查库。
+        // 标记只写在 request 上，不跨请求，因此不影响「撤权立即生效」。
+        ServletRequestAttributes attrs =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attrs != null
+                && Boolean.TRUE.equals(attrs.getRequest().getAttribute(PermissionInterceptor.CHECKED_ATTRIBUTE))) {
             return joinPoint.proceed();
         }
 

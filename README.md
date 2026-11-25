@@ -476,7 +476,8 @@ CREATE TABLE salary_standard (
 | 层 | 组件 | 回答的问题 | 失败响应 |
 | :--- | :--- | :--- | :--- |
 | 拦截器 | `LoginInterceptor` | 有没有登录 | 401 |
-| 切面 | `PermissionAspect` | 这个登录的人能不能调这个接口 | 403 |
+| 拦截器 | `PermissionInterceptor` | 这个登录的人能不能调这个接口（**参数解析前**判定） | 403 |
+| 切面 | `PermissionAspect` | 同一问题的兜底（覆盖非 MVC 调用） | 403 |
 
 **四张表**：`role`（角色）、`permission`（权限点）、`user_role`（账号-角色）、`role_permission`（角色-权限）。权限点编码形如 `emp:write`，与注解取值一一对应：
 
@@ -486,7 +487,9 @@ CREATE TABLE salary_standard (
 public Result<Void> add(@RequestBody @Valid Emp emp) { ... }
 ```
 
-**为什么用切面而不是拦截器**：拦截器只能按 URL 前缀猜意图（`/emps` 的 POST 要写权限），规则与路由耦合，新增接口时漏改就是越权。注解跟着方法走，看得见、改得动。
+**为什么鉴权既在拦截器又在切面**：`@Valid` 的参数校验发生在 HandlerAdapter 解析参数阶段，早于 Controller 方法调用，也就早于切面。只靠切面时，一个没有 `emp:write` 的账号提交不完整数据，先收到的是「所属部门不能为空」而不是 403——数据虽不会被写入，但错误语义错了，还把字段约束泄露给了未授权方（接口回归时发现）。所以拦截器按**同一个** `@RequirePermission` 注解在参数解析前判一次，切面保留兜底；拦截器通过后往 request 写标记，切面据此跳过重复查库。
+
+**为什么不是「拦截器按 URL 前缀判断」**：那条路会把规则和路由耦合起来——`/emps` 的 POST 要写权限、GET 要读权限，新增接口时漏改就是越权。这里拦截器读的仍是方法上的注解，规则跟着方法走，看得见、改得动。
 
 **为什么权限每次查库、不放进 session**：撤权必须立即生效。实测流程是：管理员清空 HR 角色的权限 → 该账号下一次请求立刻 403；恢复后立刻 200。缓存在会话里会出现「已撤权但还能用」，这在权限系统里是最危险的错误方向。
 
@@ -811,6 +814,7 @@ emp_id(PK) / emp_name / gender / dept / post / salary / hire_date / status
 | 2026-11-24 | 端点去重与授权入口：删除与 `GET /users/{id}/roles` 重复的 `GET /roles/users/{id}`（48→47）；账号页新增「角色」按钮，可勾选分配角色（复用既有接口，不新增端点） |
 | 2026-11-24 | 修复删除账号撞外键：`user_role` 对 `sys_user` 有外键，直接删账号会抛 `DataIntegrityViolationException`（表现为「系统繁忙」）；改为同事务内先清角色关联；并补该异常的全局处理，提示「数据被其他记录引用或违反约束」 |
 | 2026-11-24 | 新增 `salary_standard` 薪资标准表（按生效日期留存调薪历史）：生成薪资改取当月适用标准，修复「补生成历史月份用当前薪资」；员工表单部门改下拉、登记考勤日期默认今天、考勤变动后提示重算；用例补至 80 条 |
+| 2026-11-25 | 权限判定前置：新增 `PermissionInterceptor`，在参数解析（含 `@Valid`）之前按 `@RequirePermission` 判定，越权请求直接 403，不再先返回字段校验信息；`PermissionAspect` 保留兜底并用请求级标记避免重复查库。同时把回归脚本改为可重复执行：`verify_perm2.sh` 用临时账号/角色、不再删种子数据，`verify_all.sh` 的 T07 按「状态服务端推导」断言并清理残留 |
 
 ---
 
